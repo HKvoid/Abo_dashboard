@@ -521,6 +521,58 @@ def delete_ticket_panel(guild_id, panel_id):
         return jsonify({"error": "Panel no encontrado"}), 404
     return jsonify({"ok": True})
 
+@app.post("/api/ticket-panels/<int:guild_id>/<int:panel_id>/image")
+@require_auth
+def upload_ticket_panel_image(guild_id, panel_id):
+    panel = run_async(_fetchrow("SELECT id FROM ticket_panels WHERE id=$1 AND guild_id=$2", panel_id, guild_id))
+    if not panel:
+        return jsonify({"error": "Panel no encontrado"}), 404
+    image = request.files.get("image")
+    if not image or not image.filename:
+        return jsonify({"error": "Selecciona una imagen"}), 400
+    mime = (image.mimetype or "").lower()
+    validator = _IMAGE_TYPES.get(mime)
+    if not validator:
+        return jsonify({"error": "Formato no compatible. Usa PNG, JPG, GIF o WebP"}), 415
+    raw = image.stream.read(MAX_IMAGE_BYTES + 1)
+    if not raw or len(raw) > MAX_IMAGE_BYTES or not validator(raw):
+        return jsonify({"error": "La imagen no es válida o supera el límite de 5 MB"}), 415
+    try:
+        with Image.open(io.BytesIO(raw)) as decoded:
+            expected = {"image/png":"PNG", "image/jpeg":"JPEG", "image/gif":"GIF", "image/webp":"WEBP"}[mime]
+            if decoded.format != expected or decoded.width * decoded.height > 40_000_000: return jsonify({"error":"La imagen no es válida"}), 415
+            decoded.verify()
+    except (UnidentifiedImageError, OSError, Image.DecompressionBombError, Image.DecompressionBombWarning):
+        return jsonify({"error": "No se pudo validar la imagen"}), 415
+    kind = f"panel:{panel_id}"
+    url = f"{_public_base_url()}/api/ticket-panels/{guild_id}/{panel_id}/image"
+    async def _store():
+        async with _pool.acquire() as conn:
+            await conn.execute("""INSERT INTO dashboard_uploads (guild_id, kind, mime_type, file_data)
+                VALUES ($1,$2,$3,$4) ON CONFLICT (guild_id, kind) DO UPDATE SET
+                mime_type=EXCLUDED.mime_type, file_data=EXCLUDED.file_data, updated_at=NOW()""", guild_id, kind, mime, raw)
+            await conn.execute("UPDATE ticket_panels SET image_url=$1, updated_at=NOW() WHERE id=$2 AND guild_id=$3", url, panel_id, guild_id)
+    run_async(_store())
+    return jsonify({"ok": True, "url": url, "size": len(raw)})
+
+
+@app.get("/api/ticket-panels/<int:guild_id>/<int:panel_id>/image")
+def get_ticket_panel_image(guild_id, panel_id):
+    row = run_async(_fetchrow("SELECT mime_type, file_data FROM dashboard_uploads WHERE guild_id=$1 AND kind=$2", guild_id, f"panel:{panel_id}"))
+    if not row: return jsonify({"error": "Imagen no encontrada"}), 404
+    return Response(bytes(row["file_data"]), mimetype=row["mime_type"], headers={"Cache-Control":"public, max-age=3600", "X-Content-Type-Options":"nosniff"})
+
+
+@app.delete("/api/ticket-panels/<int:guild_id>/<int:panel_id>/image")
+@require_auth
+def delete_ticket_panel_image(guild_id, panel_id):
+    async def _delete():
+        async with _pool.acquire() as conn:
+            await conn.execute("DELETE FROM dashboard_uploads WHERE guild_id=$1 AND kind=$2", guild_id, f"panel:{panel_id}")
+            await conn.execute("UPDATE ticket_panels SET image_url='', updated_at=NOW() WHERE id=$1 AND guild_id=$2", panel_id, guild_id)
+    run_async(_delete())
+    return jsonify({"ok": True})
+
 # ── Stats ─────────────────────────────────────────────────────────────────────
 @app.get("/api/stats/<int:guild_id>")
 @require_auth

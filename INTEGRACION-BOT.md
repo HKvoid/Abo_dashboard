@@ -16,3 +16,7 @@ En la sección Tickets puedes crear, editar, seleccionar y eliminar paneles. Cad
 ## Estilos e imagen
 
 Cada botón se puede guardar como oscuro, verde vivo, rojo vivo o azul. También puedes indicar una URL pública de imagen para el embed del panel.
+
+## Últimas mejoras
+
+La imagen del panel se selecciona como archivo desde el dashboard y se guarda directamente en Neon. Los botones crean tickets sin mostrar formulario; el texto del botón se usa como asunto inicial.
