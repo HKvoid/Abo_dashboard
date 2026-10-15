@@ -1,0 +1,781 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Abo Dashboard</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#0d0f14;--surface:#161a22;--card:#1e2330;--border:#2a2f3d;--blurple:#5865f2;--blurple-d:#4752c4;--blurple-l:#7289da;--green:#57f287;--yellow:#fee75c;--red:#ed4245;--text:#e3e5e8;--muted:#8e9297;--radius:10px;--sidebar-w:220px}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{background:var(--bg);color:var(--text);font-family:'Inter',sans-serif;font-size:14px;line-height:1.5;display:flex}
+.sidebar{width:var(--sidebar-w);background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;position:fixed;top:0;left:0;bottom:0;z-index:10}
+.sidebar-header{padding:20px 16px 14px;border-bottom:1px solid var(--border)}
+.bot-avatar{width:44px;height:44px;border-radius:50%;background:var(--blurple);display:flex;align-items:center;justify-content:center;font-size:20px;margin-bottom:8px}
+.bot-name{font-weight:700;font-size:15px}
+.bot-status{display:flex;align-items:center;gap:5px;color:var(--muted);font-size:12px}
+.status-dot{width:8px;height:8px;border-radius:50%;background:var(--green);box-shadow:0 0 6px var(--green)}
+nav{flex:1;padding:12px 8px;overflow-y:auto}
+.nav-label{font-size:11px;font-weight:600;color:var(--muted);padding:8px 8px 4px;letter-spacing:.04em;text-transform:uppercase}
+.nav-item{display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:6px;cursor:pointer;color:var(--muted);font-weight:500;transition:background .12s,color .12s;margin-bottom:1px;border:none;background:none;width:100%;text-align:left;font-family:inherit;font-size:14px}
+.nav-item:hover{background:var(--card);color:var(--text)}
+.nav-item.active{background:rgba(88,101,242,.2);color:var(--blurple-l)}
+.sidebar-footer{padding:12px 16px;border-top:1px solid var(--border);font-size:11px;color:var(--muted)}
+.main{margin-left:var(--sidebar-w);flex:1;display:flex;flex-direction:column;min-height:100vh}
+.topbar{background:var(--surface);border-bottom:1px solid var(--border);padding:0 28px;height:56px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:5}
+.topbar-title{font-size:16px;font-weight:700}
+.topbar-right{display:flex;gap:10px;align-items:center}
+.guild-pill{background:var(--card);border:1px solid var(--border);border-radius:6px;padding:5px 12px;font-size:13px;font-weight:600;color:var(--blurple-l)}
+.content{flex:1;padding:28px;max-width:860px}
+.panel{display:none}.panel.active{display:block}
+.card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:20px 22px;margin-bottom:18px}
+.card-title{font-weight:700;font-size:14px;margin-bottom:16px;display:flex;align-items:center;gap:8px}
+.badge{font-size:10px;font-weight:600;padding:2px 6px;border-radius:4px;background:rgba(88,101,242,.2);color:var(--blurple-l);letter-spacing:.04em}
+.stats-row{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:18px}
+.stat-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:16px 18px}
+.stat-label{font-size:12px;color:var(--muted);margin-bottom:4px}
+.stat-value{font-size:26px;font-weight:700;font-family:'JetBrains Mono',monospace}
+.stat-value.blue{color:var(--blurple-l)}.stat-value.green{color:var(--green)}.stat-value.yellow{color:var(--yellow)}.stat-value.red{color:var(--red)}
+.form-group{margin-bottom:16px}
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+label{display:block;font-size:12px;font-weight:600;color:var(--muted);margin-bottom:6px;letter-spacing:.03em}
+input[type=text],input[type=url],input[type=number],input[type=password],textarea,select{width:100%;background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:8px 11px;font-family:inherit;font-size:13px;transition:border-color .15s}
+input:focus,textarea:focus,select:focus{outline:none;border-color:var(--blurple);box-shadow:0 0 0 3px rgba(88,101,242,.18)}
+textarea{resize:vertical;min-height:80px}
+.hint{font-size:11px;color:var(--muted);margin-top:4px}
+.hint code,.hint a{color:var(--blurple-l);font-family:'JetBrains Mono',monospace;font-size:11px}
+.hint a{text-decoration:none}
+.hint a:hover{text-decoration:underline}
+.toggle-row{display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border)}
+.toggle-row:last-child{border-bottom:none;padding-bottom:0}
+.toggle-row:first-child{padding-top:0}
+.toggle-info strong{display:block;font-size:13px;font-weight:600;margin-bottom:2px}
+.toggle-info span{font-size:12px;color:var(--muted)}
+.toggle{position:relative;width:40px;height:22px;cursor:pointer}
+.toggle input{display:none}
+.toggle-track{position:absolute;inset:0;background:var(--border);border-radius:11px;transition:background .2s}
+.toggle-thumb{position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;background:#fff;transition:left .2s}
+.toggle input:checked~.toggle-track{background:var(--blurple)}
+.toggle input:checked~.toggle-thumb{left:21px}
+.btn{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border-radius:6px;font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;border:none;transition:filter .15s,opacity .15s}
+.btn:hover{filter:brightness(1.1)}.btn:active{filter:brightness(.95)}
+.btn-primary{background:var(--blurple);color:#fff}
+.btn-danger{background:var(--red);color:#fff}
+.btn-ghost{background:transparent;border:1px solid var(--border);color:var(--muted)}
+.btn-ghost:hover{color:var(--text);border-color:var(--text);filter:none}
+.btn-sm{padding:5px 11px;font-size:12px}
+.btn:disabled{opacity:.45;cursor:not-allowed;filter:none}
+.actions-bar{display:flex;gap:8px;justify-content:flex-end;margin-top:18px;padding-top:16px;border-top:1px solid var(--border)}
+.preview-embed{background:#2b2d31;border-left:4px solid var(--blurple);border-radius:0 4px 4px 0;padding:12px 14px;margin-top:12px;font-size:13px}
+.preview-embed p{margin-top:6px;white-space:pre-wrap;word-break:break-word}
+.section-heading{font-size:18px;font-weight:700;margin-bottom:6px}
+.section-sub{color:var(--muted);font-size:13px;margin-bottom:22px}
+table{width:100%;border-collapse:collapse}
+th,td{text-align:left;padding:9px 12px}
+th{font-size:11px;font-weight:600;color:var(--muted);border-bottom:1px solid var(--border);text-transform:uppercase;letter-spacing:.04em}
+td{border-bottom:1px solid rgba(255,255,255,.04);font-size:13px}
+tr:last-child td{border-bottom:none}
+.tag{display:inline-block;padding:2px 7px;border-radius:4px;font-size:11px}
+.tag-open{background:rgba(87,242,135,.12);color:var(--green)}
+.tag-closed{background:rgba(142,146,151,.12);color:var(--muted)}
+#toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);background:var(--card);border:1px solid var(--border);color:var(--text);padding:10px 18px;border-radius:8px;font-size:13px;font-weight:500;opacity:0;pointer-events:none;transition:opacity .2s;z-index:100;display:flex;align-items:center;gap:8px}
+#toast.show{opacity:1}
+#toast.success .ti{color:var(--green)}
+#toast.error .ti{color:var(--red)}
+.spinner{width:18px;height:18px;border:2px solid var(--border);border-top-color:var(--blurple);border-radius:50%;animation:spin .6s linear infinite;display:inline-block}
+@keyframes spin{to{transform:rotate(360deg)}}
+.empty{text-align:center;padding:32px;color:var(--muted);font-size:13px}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.chip{display:flex;align-items:center;gap:6px;background:rgba(88,101,242,.15);color:var(--blurple-l);border-radius:5px;padding:3px 9px 3px 7px;font-size:12px}
+.chip-remove{cursor:pointer;color:var(--muted);font-size:14px;line-height:1;border:none;background:none;padding:0}
+.chip-remove:hover{color:var(--red)}
+.swatch-grid{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+.swatch{width:32px;height:32px;border-radius:50%;cursor:pointer;border:3px solid transparent;transition:border-color .15s,transform .1s;position:relative}
+.swatch:hover{transform:scale(1.15)}
+.swatch.on{border-color:#fff}
+.swatch-label{position:absolute;bottom:-18px;left:50%;transform:translateX(-50%);font-size:9px;color:var(--muted);white-space:nowrap}
+.login-wrap{display:flex;align-items:center;justify-content:center;min-height:100vh;width:100%}
+.login-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:36px 32px;width:340px}
+.login-card h2{font-size:18px;font-weight:700;margin-bottom:4px}
+.login-card p{color:var(--muted);font-size:13px;margin-bottom:22px}
+@media(max-width:720px){.sidebar{display:none}.main{margin-left:0}.stats-row{grid-template-columns:repeat(2,1fr)}.form-row{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div class="login-wrap" id="login-wrap">
+  <div class="login-card">
+    <div style="font-size:32px;margin-bottom:12px">🤖</div>
+    <h2>Abo Dashboard</h2>
+    <p>Ingresa el token de acceso y el Guild ID del servidor</p>
+    <div class="form-group">
+      <label>DASHBOARD_SECRET</label>
+      <input type="password" id="li-token" placeholder="tu-token-secreto">
+    </div>
+    <div class="form-group">
+      <label>Guild ID</label>
+      <input type="text" id="li-guild" placeholder="123456789012345678">
+    </div>
+    <div class="form-group">
+      <label>URL de la API (sin / al final)</label>
+      <input type="text" id="li-url" placeholder="http://localhost:5001" value="http://localhost:5001">
+    </div>
+    <button class="btn btn-primary" style="width:100%" onclick="doLogin()">Entrar</button>
+    <div id="li-err" style="color:var(--red);font-size:12px;margin-top:10px;display:none"></div>
+  </div>
+</div>
+
+<!-- DASHBOARD -->
+<div id="app-wrap" style="display:none;width:100%">
+<aside class="sidebar">
+  <div class="sidebar-header">
+    <div class="bot-avatar">🤖</div>
+    <div class="bot-name">Abo</div>
+    <div class="bot-status"><div class="status-dot"></div><span id="sb-guild">—</span></div>
+  </div>
+  <nav>
+    <div class="nav-label">General</div>
+    <button class="nav-item active" onclick="show('overview',this)"><span>📊</span> Resumen</button>
+    <div class="nav-label">Módulos</div>
+    <button class="nav-item" onclick="show('greetings',this)"><span>👋</span> Bienvenidas</button>
+    <button class="nav-item" onclick="show('tickets',this)"><span>🎫</span> Tickets</button>
+    <button class="nav-item" onclick="show('colors',this)"><span>🎨</span> Colores</button>
+    <button class="nav-item" onclick="show('moderation',this)"><span>🛡️</span> Moderación</button>
+    <button class="nav-item" onclick="show('warns',this)"><span>⚠️</span> Warns</button>
+    <button class="nav-item" onclick="show('ia',this)"><span>🤖</span> IA</button>
+    <div class="nav-label">Sistema</div>
+    <button class="nav-item" onclick="show('permisos',this)"><span>🔐</span> Permisos</button>
+  </nav>
+  <div class="sidebar-footer"><code>Neon Postgres · Flask API</code></div>
+</aside>
+
+<div class="main">
+  <div class="topbar">
+    <div class="topbar-title" id="topbar-title">Resumen</div>
+    <div class="topbar-right">
+      <div class="guild-pill" id="tb-guild">—</div>
+      <button class="btn btn-ghost btn-sm" onclick="logout()">Salir</button>
+    </div>
+  </div>
+  <div class="content">
+
+    <!-- ═══ RESUMEN ═══ -->
+    <div class="panel active" id="panel-overview">
+      <div class="section-heading">Panel de Control</div>
+      <div class="section-sub">Estado en tiempo real de la base de datos de Abo</div>
+      <div class="stats-row">
+        <div class="stat-card"><div class="stat-label">Warns totales</div><div class="stat-value yellow" id="st-warns">…</div></div>
+        <div class="stat-card"><div class="stat-label">Tickets abiertos</div><div class="stat-value green" id="st-tickets">…</div></div>
+        <div class="stat-card"><div class="stat-label">Excepciones purga</div><div class="stat-value blue" id="st-exc">…</div></div>
+        <div class="stat-card"><div class="stat-label">Usuarios con memoria IA</div><div class="stat-value blue" id="st-mem">…</div></div>
+      </div>
+      <div class="card">
+        <div class="card-title">🎫 Tickets recientes</div>
+        <div id="ov-tickets"><div class="empty"><div class="spinner"></div></div></div>
+      </div>
+      <div class="card">
+        <div class="card-title">⚠️ Warns recientes</div>
+        <div id="ov-warns"><div class="empty"><div class="spinner"></div></div></div>
+      </div>
+    </div>
+
+    <!-- ═══ BIENVENIDAS ═══ -->
+    <div class="panel" id="panel-greetings">
+      <div class="section-heading">Bienvenidas y Despedidas</div>
+      <div class="section-sub">Configura los mensajes de entrada y salida del servidor</div>
+      <div class="card">
+        <div class="card-title">👋 Bienvenida <span class="badge">welcome_config</span></div>
+        <div class="toggle-row" style="margin-bottom:14px">
+          <div class="toggle-info"><strong>Activar bienvenidas</strong><span>Mensaje al entrar un nuevo miembro</span></div>
+          <label class="toggle"><input type="checkbox" id="welcome-enabled"><div class="toggle-track"></div><div class="toggle-thumb"></div></label>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label>Canal (ID)</label><input type="text" id="welcome-channel" placeholder="123456789012345678"></div>
+          <div class="form-group"><label>URL de imagen (opcional)</label><input type="url" id="welcome-img" placeholder="https://…"></div>
+        </div>
+        <div class="form-group">
+          <label>Texto</label>
+          <textarea id="welcome-text" placeholder="Bienvenido, {user}! Ya somos {member_count} en {server} 🎉" oninput="updatePreview()"></textarea>
+          <div class="hint">Variables: <code>{user}</code> <code>{username}</code> <code>{server}</code> <code>{member_count}</code></div>
+        </div>
+        <div class="preview-embed"><strong>Vista previa</strong><p id="welcome-preview">—</p></div>
+        <div class="actions-bar">
+          <button class="btn btn-ghost" onclick="loadSettings()">Descartar</button>
+          <button class="btn btn-primary" onclick="saveGreetings('welcome')">Guardar bienvenida</button>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title">🚪 Despedida <span class="badge">leave_config</span></div>
+        <div class="toggle-row" style="margin-bottom:14px">
+          <div class="toggle-info"><strong>Activar despedidas</strong><span>Mensaje al salir un miembro</span></div>
+          <label class="toggle"><input type="checkbox" id="leave-enabled"><div class="toggle-track"></div><div class="toggle-thumb"></div></label>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label>Canal (ID)</label><input type="text" id="leave-channel" placeholder="123456789012345678"></div>
+          <div class="form-group"><label>URL de imagen (opcional)</label><input type="url" id="leave-img" placeholder="https://…"></div>
+        </div>
+        <div class="form-group">
+          <label>Texto</label>
+          <textarea id="leave-text" placeholder="Hasta luego, {username}…"></textarea>
+          <div class="hint">Variables: <code>{user}</code> <code>{username}</code> <code>{server}</code> <code>{member_count}</code></div>
+        </div>
+        <div class="actions-bar">
+          <button class="btn btn-ghost" onclick="loadSettings()">Descartar</button>
+          <button class="btn btn-primary" onclick="saveGreetings('leave')">Guardar despedida</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ TICKETS ═══ -->
+    <div class="panel" id="panel-tickets">
+      <div class="section-heading">Tickets</div>
+      <div class="section-sub">Configuración del sistema y listado de tickets activos</div>
+      <div class="card">
+        <div class="card-title">⚙️ Configuración <span class="badge">ticket_config</span></div>
+        <div class="form-row">
+          <div class="form-group"><label>ID de categoría</label><input type="text" id="tk-cat" placeholder="ID de la categoría Discord"></div>
+          <div class="form-group"><label>ID del rol de Staff</label><input type="text" id="tk-role" placeholder="ID del rol Staff"></div>
+        </div>
+        <div class="form-group"><label>ID del canal de registros (logs)</label><input type="text" id="tk-log" placeholder="ID del canal de logs"></div>
+        <div class="actions-bar">
+          <button class="btn btn-ghost" onclick="loadSettings()">Descartar</button>
+          <button class="btn btn-primary" onclick="saveTicketConfig()">Guardar</button>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title">📋 Tickets</div>
+        <div style="display:flex;gap:8px;margin-bottom:14px">
+          <select id="tk-filter" onchange="loadTickets()" style="width:auto">
+            <option value="">Todos</option>
+            <option value="open">Abiertos</option>
+            <option value="closed">Cerrados</option>
+          </select>
+        </div>
+        <div id="tk-table"><div class="empty"><div class="spinner"></div></div></div>
+      </div>
+    </div>
+
+    <!-- ═══ COLORES ═══ -->
+    <div class="panel" id="panel-colors">
+      <div class="section-heading">Roles de Color</div>
+      <div class="section-sub">Roles asignados en la base de datos por categoría</div>
+      <div class="card">
+        <div class="card-title">🎨 Colores de miembros</div>
+        <div id="colors-basic"><div class="empty"><div class="spinner"></div></div></div>
+      </div>
+      <div class="card">
+        <div class="card-title">💎 Colores Booster</div>
+        <div id="colors-booster"><div class="empty"><div class="spinner"></div></div></div>
+      </div>
+      <div class="card">
+        <div class="card-title">🔧 Colores Staff</div>
+        <div id="colors-staff"><div class="empty"><div class="spinner"></div></div></div>
+      </div>
+    </div>
+
+    <!-- ═══ MODERACIÓN ═══ -->
+    <div class="panel" id="panel-moderation">
+      <div class="section-heading">Moderación</div>
+      <div class="section-sub">Auto-Mod y excepciones de purga AFK</div>
+      <div class="card">
+        <div class="card-title">🤖 Umbrales Auto-Mod</div>
+        <div class="toggle-row">
+          <div class="toggle-info"><strong>Timeout automático</strong><span>Mutea al llegar al umbral de warns</span></div>
+          <label class="toggle"><input type="checkbox" id="am-timeout-en" checked><div class="toggle-track"></div><div class="toggle-thumb"></div></label>
+        </div>
+        <div class="toggle-row">
+          <div class="toggle-info"><strong>Ban automático</strong><span>Banea al llegar al umbral de warns</span></div>
+          <label class="toggle"><input type="checkbox" id="am-ban-en" checked><div class="toggle-track"></div><div class="toggle-thumb"></div></label>
+        </div>
+        <div class="form-row" style="margin-top:14px">
+          <div class="form-group"><label>Warns para timeout</label><input type="number" id="am-timeout-n" value="3" min="1" max="20"></div>
+          <div class="form-group"><label>Warns para ban</label><input type="number" id="am-ban-n" value="5" min="1" max="20"></div>
+        </div>
+        <div class="hint">⚠️ Estos valores se guardan en <code>guild_settings</code>. Para que el bot los use, ajusta el código de <code>cogs/warns.py</code> para leerlos dinámicamente.</div>
+        <div class="actions-bar">
+          <button class="btn btn-primary" onclick="saveAutoMod()">Guardar Auto-Mod</button>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title">🛡️ Excepciones de purga AFK <span class="badge">purgaexc</span></div>
+        <div id="exc-list"><div class="empty"><div class="spinner"></div></div></div>
+        <div class="form-row" style="margin-top:16px">
+          <div class="form-group"><label>ID de usuario</label><input type="text" id="exc-uid" placeholder="123456789012345678"></div>
+          <div class="form-group"><label>Razón</label><input type="text" id="exc-reason" placeholder="Staff permanente"></div>
+        </div>
+        <div class="actions-bar">
+          <button class="btn btn-primary" onclick="addException()">Agregar excepción</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ WARNS ═══ -->
+    <div class="panel" id="panel-warns">
+      <div class="section-heading">Warns</div>
+      <div class="section-sub">Historial de advertencias en Neon</div>
+      <div class="card">
+        <div style="display:flex;gap:8px;margin-bottom:14px">
+          <input type="text" id="w-search" placeholder="Buscar por ID de usuario o razón…" style="flex:1" oninput="debouncedWarnSearch()">
+          <button class="btn btn-ghost" onclick="loadWarns()">Buscar</button>
+        </div>
+        <div id="w-table"><div class="empty"><div class="spinner"></div></div></div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px">
+          <span id="w-count" style="color:var(--muted);font-size:12px"></span>
+          <div style="display:flex;gap:6px">
+            <button class="btn btn-ghost btn-sm" id="w-prev" onclick="warnPage(-1)" disabled>← Anterior</button>
+            <button class="btn btn-ghost btn-sm" id="w-next" onclick="warnPage(1)">Siguiente →</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ IA ═══ -->
+    <div class="panel" id="panel-ia">
+      <div class="section-heading">IA / Personalidad</div>
+      <div class="section-sub">Parámetros de la IA que se guardan en <code>guild_settings</code></div>
+      <div class="card">
+        <div class="card-title">🧠 Prompt de sistema</div>
+        <div class="form-group">
+          <label>Personalidad</label>
+          <textarea style="min-height:130px" id="ia-prompt">Eres Abo, un bot de Discord con personalidad sarcástica. Respondes SIEMPRE en español, en 1 sola oración, corta y natural, como si fueras un amigo chateando. Usa 'we', 'nmms', 'pa' con moderación, no en cada mensaje. NUNCA describas tu propia personalidad, ni digas cosas como 'estoy aquí para responder con sarcasmo' o listes lo que puedes hacer. Si te saludan, solo saluda de vuelta con humor breve, sin explicaciones. No hagas preguntas retóricas largas ni des opciones tipo menú.</textarea>
+          <div class="hint">Este valor se guarda como <code>ia_system_prompt</code>. Ajusta <code>core.py</code> para leerlo desde la DB al iniciar.</div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Modelo Groq</label>
+            <select id="ia-model">
+              <option value="qwen/qwen3.8-27b">qwen/qwen3-8b-27b (actual)</option>
+              <option value="llama3-8b-8192">llama3-8b-8192</option>
+              <option value="llama3-70b-8192">llama3-70b-8192</option>
+              <option value="mixtral-8x7b-32768">mixtral-8x7b-32768</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Temperatura (0–2)</label>
+            <input type="number" id="ia-temp" value="0.9" min="0" max="2" step="0.1">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label>Máx. tokens</label><input type="number" id="ia-tokens" value="500" min="100" max="4096"></div>
+          <div class="form-group"><label>Historial (mensajes por canal)</label><input type="number" id="ia-history" value="30" min="5" max="100"></div>
+        </div>
+        <div class="actions-bar">
+          <button class="btn btn-danger" onclick="clearMemory()" style="margin-right:auto">🗑️ Borrar toda la memoria</button>
+          <button class="btn btn-ghost" onclick="loadSettings()">Descartar</button>
+          <button class="btn btn-primary" onclick="saveIA()">Guardar</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ PERMISOS ═══ -->
+    <div class="panel" id="panel-permisos">
+      <div class="section-heading">Permisos</div>
+      <div class="section-sub">Roles autorizados para comandos de staff (se guardan en <code>guild_settings</code>)</div>
+      <div class="card">
+        <div class="card-title">🔐 Roles de staff <span class="badge">ROLES_COMANDOS</span></div>
+        <div class="chips" id="staff-chips"></div>
+        <div class="form-row" style="margin-top:14px">
+          <div class="form-group"><input type="text" id="new-staff" placeholder="Nombre exacto del rol"></div>
+          <div><label>&nbsp;</label><button class="btn btn-primary" onclick="addRoleChip('staff')">Agregar</button></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title">🎨 Roles de color-staff <span class="badge">ROLES_STAFF_COLOR</span></div>
+        <div class="chips" id="scolor-chips"></div>
+        <div class="form-row" style="margin-top:14px">
+          <div class="form-group"><input type="text" id="new-scolor" placeholder="Nombre exacto del rol"></div>
+          <div><label>&nbsp;</label><button class="btn btn-primary" onclick="addRoleChip('scolor')">Agregar</button></div>
+        </div>
+        <div class="actions-bar">
+          <button class="btn btn-primary" onclick="savePermisos()">Guardar permisos</button>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /content -->
+</div><!-- /main -->
+</div><!-- /app-wrap -->
+
+<div id="toast"><span class="ti">✓</span><span id="toast-msg"></span></div>
+
+<script>
+// ── State ────────────────────────────────────────────────────────────────────
+let API = '', TOKEN = '', GUILD = '';
+const TITLES = {overview:'Resumen',greetings:'Bienvenidas',tickets:'Tickets',colors:'Colores',moderation:'Moderación',warns:'Warns',ia:'IA',permisos:'Permisos'};
+let warnOffset = 0, warnTotal = 0;
+const WARN_LIMIT = 20;
+
+// ── Auth ─────────────────────────────────────────────────────────────────────
+function doLogin(){
+  API   = document.getElementById('li-url').value.replace(/\/$/,'');
+  TOKEN = document.getElementById('li-token').value.trim();
+  GUILD = document.getElementById('li-guild').value.trim();
+  if(!GUILD || !API){ showLoginErr('Completa todos los campos'); return; }
+
+  apiFetch('/api/stats/'+GUILD)
+    .then(()=>{
+      document.getElementById('login-wrap').style.display='none';
+      document.getElementById('app-wrap').style.display='';
+      document.getElementById('sb-guild').textContent = 'Guild '+GUILD;
+      document.getElementById('tb-guild').textContent = 'Guild '+GUILD;
+      initDashboard();
+    })
+    .catch(()=>showLoginErr('No se pudo conectar. Revisa la URL, el token y el Guild ID.'));
+}
+function showLoginErr(m){ const e=document.getElementById('li-err'); e.textContent=m; e.style.display='block'; }
+function logout(){ location.reload(); }
+
+// ── API helper ───────────────────────────────────────────────────────────────
+async function apiFetch(path, opts={}){
+  const headers = {'X-Dashboard-Token': TOKEN, 'Content-Type':'application/json', ...(opts.headers||{})};
+  const res = await fetch(API+path, {...opts, headers});
+  if(!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+// ── Nav ───────────────────────────────────────────────────────────────────────
+function show(panel, btn){
+  document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(b=>b.classList.remove('active'));
+  document.getElementById('panel-'+panel).classList.add('active');
+  btn.classList.add('active');
+  document.getElementById('topbar-title').textContent = TITLES[panel]||panel;
+  if(panel==='overview')   loadOverview();
+  if(panel==='tickets')    loadTickets();
+  if(panel==='colors')     loadColors();
+  if(panel==='moderation') loadExceptions();
+  if(panel==='warns')      loadWarns();
+}
+
+// ── Init ─────────────────────────────────────────────────────────────────────
+function initDashboard(){
+  loadOverview();
+  loadSettings();
+}
+
+// ── Stats ─────────────────────────────────────────────────────────────────────
+function loadOverview(){
+  apiFetch('/api/stats/'+GUILD).then(d=>{
+    document.getElementById('st-warns').textContent   = d.warns_total;
+    document.getElementById('st-tickets').textContent = d.tickets_open;
+    document.getElementById('st-exc').textContent     = d.exceptions_count;
+    document.getElementById('st-mem').textContent     = d.memory_users;
+  }).catch(()=>{});
+
+  // Recent tickets
+  apiFetch('/api/tickets/'+GUILD+'?limit=5').then(d=>{
+    const el = document.getElementById('ov-tickets');
+    if(!d.tickets.length){ el.innerHTML='<div class="empty">Sin tickets aún</div>'; return; }
+    el.innerHTML = `<table><thead><tr><th>ID</th><th>Título</th><th>Opener</th><th>Estado</th></tr></thead><tbody>
+      ${d.tickets.map(t=>`<tr>
+        <td><code>#${t.id}</code></td>
+        <td>${esc(t.title)}</td>
+        <td><code>${t.opener_id}</code></td>
+        <td><span class="tag tag-${t.status==='open'?'open':'closed'}">${t.status}</span></td>
+      </tr>`).join('')}
+    </tbody></table>`;
+  }).catch(()=>{});
+
+  // Recent warns
+  apiFetch('/api/warns/'+GUILD+'?limit=5').then(d=>{
+    const el = document.getElementById('ov-warns');
+    if(!d.warns.length){ el.innerHTML='<div class="empty">Sin warns aún</div>'; return; }
+    el.innerHTML = `<table><thead><tr><th>ID</th><th>Usuario</th><th>Razón</th><th>Fecha</th></tr></thead><tbody>
+      ${d.warns.map(w=>`<tr>
+        <td><code>${w.id}</code></td>
+        <td><code>${w.user_id}</code></td>
+        <td>${esc(w.reason)}</td>
+        <td>${fmtDate(w.created_at)}</td>
+      </tr>`).join('')}
+    </tbody></table>`;
+  }).catch(()=>{});
+}
+
+// ── Settings ──────────────────────────────────────────────────────────────────
+function loadSettings(){
+  apiFetch('/api/settings/'+GUILD).then(s=>{
+    // Bienvenidas
+    setCheck('welcome-enabled', s.welcome_enabled==='true');
+    setVal('welcome-channel', s.welcome_channel_id||'');
+    setVal('welcome-img', s.welcome_image_url||'');
+    setVal('welcome-text', s.welcome_text||'');
+    // Despedidas
+    setCheck('leave-enabled', s.leave_enabled==='true');
+    setVal('leave-channel', s.leave_channel_id||'');
+    setVal('leave-img', s.leave_image_url||'');
+    setVal('leave-text', s.leave_text||'');
+    // Tickets
+    setVal('tk-cat',  s.ticket_category_id||'');
+    setVal('tk-role', s.ticket_staff_role_id||'');
+    setVal('tk-log',  s.ticket_log_channel_id||'');
+    // IA
+    setVal('ia-prompt',   s.ia_system_prompt || document.getElementById('ia-prompt').value);
+    setVal('ia-model',    s.ia_model   || 'qwen/qwen3.8-27b');
+    setVal('ia-temp',     s.ia_temperature  || '0.9');
+    setVal('ia-tokens',   s.ia_max_tokens   || '500');
+    setVal('ia-history',  s.ia_history_limit || '30');
+    // Auto-Mod
+    setCheck('am-timeout-en', s.am_timeout_enabled !== 'false');
+    setCheck('am-ban-en',     s.am_ban_enabled     !== 'false');
+    setVal('am-timeout-n', s.am_timeout_warns || '3');
+    setVal('am-ban-n',     s.am_ban_warns     || '5');
+    // Permisos
+    const staffRoles  = (s.roles_comandos||'Admin,Moderador,Shogun 🦈,ViceRoot,Root,Daimyō,Rōnin').split(',').filter(Boolean);
+    const colorRoles  = (s.roles_staff_color||'Staff').split(',').filter(Boolean);
+    renderChips('staff-chips',  staffRoles, 'staff');
+    renderChips('scolor-chips', colorRoles, 'scolor');
+    updatePreview();
+  }).catch(()=>{});
+}
+
+function saveGreetings(type){
+  const prefix = type;
+  const data = {
+    [`${prefix}_enabled`]:     getCheck(`${prefix}-enabled`) ? 'true' : 'false',
+    [`${prefix}_channel_id`]:  getVal(`${prefix}-channel`),
+    [`${prefix}_image_url`]:   getVal(`${prefix}-img`),
+    [`${prefix}_text`]:        getVal(`${prefix}-text`),
+  };
+  apiFetch('/api/settings/'+GUILD, {method:'POST', body:JSON.stringify(data)})
+    .then(()=>toast(`${type==='welcome'?'Bienvenida':'Despedida'} guardada ✅`))
+    .catch(()=>toast('Error al guardar','error'));
+}
+
+function saveTicketConfig(){
+  const data = {
+    ticket_category_id:   getVal('tk-cat'),
+    ticket_staff_role_id: getVal('tk-role'),
+    ticket_log_channel_id:getVal('tk-log'),
+  };
+  apiFetch('/api/settings/'+GUILD, {method:'POST', body:JSON.stringify(data)})
+    .then(()=>toast('Configuración de tickets guardada ✅'))
+    .catch(()=>toast('Error al guardar','error'));
+}
+
+function saveAutoMod(){
+  const data = {
+    am_timeout_enabled: getCheck('am-timeout-en') ? 'true' : 'false',
+    am_ban_enabled:     getCheck('am-ban-en')     ? 'true' : 'false',
+    am_timeout_warns:   getVal('am-timeout-n'),
+    am_ban_warns:       getVal('am-ban-n'),
+  };
+  apiFetch('/api/settings/'+GUILD, {method:'POST', body:JSON.stringify(data)})
+    .then(()=>toast('Auto-Mod guardado ✅'))
+    .catch(()=>toast('Error al guardar','error'));
+}
+
+function saveIA(){
+  const data = {
+    ia_system_prompt:  getVal('ia-prompt'),
+    ia_model:          getVal('ia-model'),
+    ia_temperature:    getVal('ia-temp'),
+    ia_max_tokens:     getVal('ia-tokens'),
+    ia_history_limit:  getVal('ia-history'),
+  };
+  apiFetch('/api/settings/'+GUILD, {method:'POST', body:JSON.stringify(data)})
+    .then(()=>toast('Configuración de IA guardada ✅'))
+    .catch(()=>toast('Error al guardar','error'));
+}
+
+function savePermisos(){
+  const staff  = [...document.querySelectorAll('#staff-chips .chip')].map(c=>c.dataset.val).join(',');
+  const scolor = [...document.querySelectorAll('#scolor-chips .chip')].map(c=>c.dataset.val).join(',');
+  const data = { roles_comandos: staff, roles_staff_color: scolor };
+  apiFetch('/api/settings/'+GUILD, {method:'POST', body:JSON.stringify(data)})
+    .then(()=>toast('Permisos guardados ✅'))
+    .catch(()=>toast('Error al guardar','error'));
+}
+
+function clearMemory(){
+  if(!confirm('¿Borrar TODA la memoria de IA? Esto elimina el historial de todos los usuarios.')) return;
+  apiFetch('/api/memory/all', {method:'DELETE'})
+    .then(()=>{ toast('Memoria borrada','error'); loadOverview(); })
+    .catch(()=>toast('Error','error'));
+}
+
+// ── Tickets ───────────────────────────────────────────────────────────────────
+function loadTickets(){
+  const status = document.getElementById('tk-filter').value;
+  const qs = status ? `?status=${status}&limit=50` : '?limit=50';
+  apiFetch('/api/tickets/'+GUILD+qs).then(d=>{
+    const el = document.getElementById('tk-table');
+    if(!d.tickets.length){ el.innerHTML='<div class="empty">Sin tickets</div>'; return; }
+    el.innerHTML = `<table><thead><tr><th>ID</th><th>Opener</th><th>Título</th><th>Estado</th><th>Fecha</th></tr></thead><tbody>
+      ${d.tickets.map(t=>`<tr>
+        <td><code>#${t.id}</code></td>
+        <td><code>${t.opener_id}</code></td>
+        <td>${esc(t.title)}</td>
+        <td><span class="tag tag-${t.status==='open'?'open':'closed'}">${t.status}</span></td>
+        <td>${fmtDate(t.created_at)}</td>
+      </tr>`).join('')}
+    </tbody></table>`;
+  }).catch(e=>{ document.getElementById('tk-table').innerHTML='<div class="empty">Error cargando tickets</div>'; });
+}
+
+// ── Colors ────────────────────────────────────────────────────────────────────
+const COLOR_DEFS = {
+  color:{ Orange:'#E67E22',Yellow:'#F1C40F',Green:'#2ECC71',Blue:'#3498DB',Purple:'#9B59B6',Pink:'#FF69B4',Cyan:'#1ABC9C',White:'#ECF0F1',Black:'#2C3E50',Silver:'#C0C0C0',Aurora:'#00FFFF',Neon:'#39FF14',Blood:'#8B0000',Ocean:'#006994',Galaxy:'#4B0082',Forest:'#228B22' },
+  boostercolor:{ Onix:'#B76E79',Aqua:'#FFD700',Sunset:'#50C878',Ice:'#0F52BA',Amethyst:'#B57EDC' },
+  staffcolor:{ CStaff1:'#e74c3c',CStaff2:'#e67e22',CStaff3:'#f1c40f',CStaff4:'#2ecc71',CStaff5:'#3498db',CStaff6:'#9b59b6',CStaff7:'#1abc9c',CStaff8:'#ecf0f1' },
+};
+
+function loadColors(){
+  apiFetch('/api/color-roles/'+GUILD).then(data=>{
+    renderColorSection('colors-basic',   'color',        data);
+    renderColorSection('colors-booster', 'boostercolor', data);
+    renderColorSection('colors-staff',   'staffcolor',   data);
+  }).catch(()=>{
+    ['colors-basic','colors-booster','colors-staff'].forEach(id=>{
+      document.getElementById(id).innerHTML='<div class="empty">Error cargando</div>';
+    });
+  });
+}
+
+function renderColorSection(elId, cat, data){
+  const el = document.getElementById(elId);
+  const defs = COLOR_DEFS[cat] || {};
+  const saved = data[cat] || {};
+  if(!Object.keys(defs).length){ el.innerHTML='<div class="empty">Sin roles definidos</div>'; return; }
+  let html = '<div class="swatch-grid" style="margin-bottom:8px">';
+  for(const [name, hex] of Object.entries(defs)){
+    const hasRole = !!saved[name];
+    html += `<div style="text-align:center">
+      <div class="swatch ${hasRole?'on':''}" style="background:${hex}" title="${name} ${hasRole?'(asignado)':'(sin rol)'}"></div>
+      <div style="font-size:9px;color:var(--muted);margin-top:20px">${name}</div>
+    </div>`;
+  }
+  html += '</div>';
+  const unassigned = Object.keys(defs).filter(k=>!saved[k]);
+  if(unassigned.length){
+    html += `<div class="hint" style="margin-top:4px">⚠️ Sin rol Discord asignado: ${unassigned.join(', ')}. Usa <code>/create_colors</code> en Discord.</div>`;
+  }
+  el.innerHTML = html;
+}
+
+// ── Exceptions ────────────────────────────────────────────────────────────────
+function loadExceptions(){
+  apiFetch('/api/purge-exceptions/'+GUILD).then(d=>{
+    const el = document.getElementById('exc-list');
+    if(!d.exceptions.length){ el.innerHTML='<div class="empty">Sin excepciones</div>'; return; }
+    el.innerHTML = `<table><thead><tr><th>User ID</th><th>Razón</th><th>Agregado por</th><th>Fecha</th><th></th></tr></thead><tbody>
+      ${d.exceptions.map(e=>`<tr>
+        <td><code>${e.user_id}</code></td>
+        <td>${esc(e.razon)}</td>
+        <td><code>${e.added_by}</code></td>
+        <td>${fmtDate(e.created_at)}</td>
+        <td><button class="btn btn-danger btn-sm" onclick="deleteException(${e.user_id})">Quitar</button></td>
+      </tr>`).join('')}
+    </tbody></table>`;
+  }).catch(()=>{ document.getElementById('exc-list').innerHTML='<div class="empty">Error</div>'; });
+}
+
+function addException(){
+  const uid    = getVal('exc-uid').trim();
+  const reason = getVal('exc-reason').trim() || 'Agregado desde dashboard';
+  if(!uid || isNaN(uid)){ toast('ID de usuario inválido','error'); return; }
+  apiFetch('/api/purge-exceptions/'+GUILD, {method:'POST', body:JSON.stringify({user_id:parseInt(uid), razon:reason, added_by:0})})
+    .then(()=>{ toast('Excepción agregada ✅'); setVal('exc-uid',''); setVal('exc-reason',''); loadExceptions(); })
+    .catch(()=>toast('Error al agregar','error'));
+}
+
+function deleteException(uid){
+  apiFetch('/api/purge-exceptions/'+GUILD+'/'+uid, {method:'DELETE'})
+    .then(()=>{ toast('Excepción eliminada','error'); loadExceptions(); })
+    .catch(()=>toast('Error','error'));
+}
+
+// ── Warns ─────────────────────────────────────────────────────────────────────
+let warnDebounce;
+function debouncedWarnSearch(){ clearTimeout(warnDebounce); warnDebounce=setTimeout(()=>{warnOffset=0;loadWarns();},400); }
+
+function loadWarns(){
+  const q = getVal('w-search').trim();
+  const qs = `?limit=${WARN_LIMIT}&offset=${warnOffset}${q?'&q='+encodeURIComponent(q):''}`;
+  apiFetch('/api/warns/'+GUILD+qs).then(d=>{
+    warnTotal = d.total;
+    const el = document.getElementById('w-table');
+    if(!d.warns.length){ el.innerHTML='<div class="empty">Sin warns</div>'; }
+    else{
+      el.innerHTML = `<table><thead><tr><th>ID</th><th>Usuario</th><th>Razón</th><th>Moderador</th><th>Fecha</th><th></th></tr></thead><tbody>
+        ${d.warns.map(w=>`<tr>
+          <td><code>${w.id}</code></td>
+          <td><code>${w.user_id}</code></td>
+          <td>${esc(w.reason)}</td>
+          <td><code>${w.moderator_id}</code></td>
+          <td>${fmtDate(w.created_at)}</td>
+          <td><button class="btn btn-danger btn-sm" onclick="deleteWarn(${w.id})">Quitar</button></td>
+        </tr>`).join('')}
+      </tbody></table>`;
+    }
+    document.getElementById('w-count').textContent = `${warnOffset+1}–${Math.min(warnOffset+WARN_LIMIT,warnTotal)} de ${warnTotal}`;
+    document.getElementById('w-prev').disabled = warnOffset===0;
+    document.getElementById('w-next').disabled = warnOffset+WARN_LIMIT>=warnTotal;
+  }).catch(()=>{ document.getElementById('w-table').innerHTML='<div class="empty">Error</div>'; });
+}
+
+function warnPage(dir){ warnOffset=Math.max(0,warnOffset+dir*WARN_LIMIT); loadWarns(); }
+
+function deleteWarn(id){
+  apiFetch('/api/warns/'+id, {method:'DELETE'})
+    .then(()=>{ toast('Warn eliminado','error'); loadWarns(); loadOverview(); })
+    .catch(()=>toast('Error','error'));
+}
+
+// ── Permisos chips ────────────────────────────────────────────────────────────
+function renderChips(containerId, values, type){
+  const el = document.getElementById(containerId);
+  el.innerHTML = values.map(v=>`<div class="chip" data-val="${esc(v)}">${esc(v)}<button class="chip-remove" onclick="removeChip(this)">×</button></div>`).join('');
+}
+function removeChip(btn){ btn.closest('.chip').remove(); }
+function addRoleChip(type){
+  const inputId = type==='staff' ? 'new-staff' : 'new-scolor';
+  const containerId = type==='staff' ? 'staff-chips' : 'scolor-chips';
+  const val = getVal(inputId).trim();
+  if(!val) return;
+  const div = document.createElement('div');
+  div.className='chip'; div.dataset.val=val;
+  div.innerHTML=`${esc(val)}<button class="chip-remove" onclick="removeChip(this)">×</button>`;
+  document.getElementById(containerId).appendChild(div);
+  setVal(inputId,'');
+}
+
+// ── Preview ───────────────────────────────────────────────────────────────────
+function updatePreview(){
+  const text = getVal('welcome-text');
+  document.getElementById('welcome-preview').textContent = text
+    .replace(/{user}/g,'@NuevoMiembro')
+    .replace(/{username}/g,'NuevoMiembro')
+    .replace(/{server}/g,'TuServidor')
+    .replace(/{member_count}/g,'1 337') || '—';
+}
+
+// ── Toast ─────────────────────────────────────────────────────────────────────
+let toastTimer;
+function toast(msg, type='success'){
+  const el=document.getElementById('toast');
+  document.getElementById('toast-msg').textContent=msg;
+  el.querySelector('.ti').textContent = type==='error'?'✕':'✓';
+  el.className='show '+type;
+  clearTimeout(toastTimer);
+  toastTimer=setTimeout(()=>el.classList.remove('show'),2600);
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function getVal(id){ return document.getElementById(id)?.value||''; }
+function setVal(id, v){ const el=document.getElementById(id); if(el) el.value=v; }
+function getCheck(id){ return document.getElementById(id)?.checked||false; }
+function setCheck(id, v){ const el=document.getElementById(id); if(el) el.checked=v; }
+function esc(s){ const d=document.createElement('div'); d.textContent=String(s||''); return d.innerHTML; }
+function fmtDate(iso){
+  if(!iso) return '—';
+  const d=new Date(iso);
+  return d.toLocaleDateString('es',{day:'2-digit',month:'short'}) + ' ' + d.toLocaleTimeString('es',{hour:'2-digit',minute:'2-digit'});
+}
+
+// Enter en login
+document.addEventListener('keydown', e=>{ if(e.key==='Enter' && document.getElementById('login-wrap').style.display!=='none') doLogin(); });
+</script>
+</body>
+</html>
