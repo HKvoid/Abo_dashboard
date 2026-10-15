@@ -40,7 +40,7 @@ nav{flex:1;padding:12px 8px;overflow-y:auto}
 .form-group{margin-bottom:16px}
 .form-row{display:grid;grid-template-columns:1fr 1fr;gap:14px}
 label{display:block;font-size:12px;font-weight:600;color:var(--muted);margin-bottom:6px;letter-spacing:.03em}
-input[type=text],input[type=url],input[type=number],input[type=password],textarea,select{width:100%;background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:8px 11px;font-family:inherit;font-size:13px;transition:border-color .15s}
+input[type=text],input[type=url],input[type=number],input[type=password],input[type=search],textarea,select{width:100%;background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:8px 11px;font-family:inherit;font-size:13px;transition:border-color .15s}
 input:focus,textarea:focus,select:focus{outline:none;border-color:var(--blurple);box-shadow:0 0 0 3px rgba(88,101,242,.18)}
 textarea{resize:vertical;min-height:80px}
 .hint{font-size:11px;color:var(--muted);margin-top:4px}
@@ -100,6 +100,19 @@ tr:last-child td{border-bottom:none}
 .login-card h2{font-size:18px;font-weight:700;margin-bottom:4px}
 .login-card p{color:var(--muted);font-size:13px;margin-bottom:22px}
 @media(max-width:720px){.sidebar{display:none}.main{margin-left:0}.stats-row{grid-template-columns:repeat(2,1fr)}.form-row{grid-template-columns:1fr}}
+.upload-box{display:flex;align-items:center;gap:14px;padding:14px;background:var(--surface);border:1px dashed var(--border);border-radius:8px;flex-wrap:wrap}
+.upload-thumb{width:96px;height:64px;object-fit:cover;border-radius:6px;background:var(--bg);border:1px solid var(--border)}
+.upload-empty{width:96px;height:64px;display:grid;place-items:center;background:var(--card);border:1px solid var(--border);border-radius:6px;font-size:24px;color:var(--muted)}
+.upload-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.upload-status{font-size:12px;color:var(--muted)}
+.ticket-preview{background:#2b2d31;border:1px solid #3f4147;border-radius:10px;padding:18px;margin:12px 0}
+.ticket-preview-title{font-size:15px;font-weight:700;margin-bottom:6px}.ticket-preview-desc{white-space:pre-wrap;color:#dbdee1;margin-bottom:14px}
+.ticket-preview-buttons{display:flex;gap:8px;flex-wrap:wrap}.ticket-preview-button{background:#4e5058;color:#f2f3f5;border:0;border-radius:5px;padding:8px 12px;font:600 12px Inter,sans-serif}
+.ticket-button-row{display:grid;grid-template-columns:100px 1fr 36px;gap:8px;align-items:center;margin-bottom:8px}.ticket-button-row input{min-width:0}
+.ticket-stats{grid-template-columns:repeat(4,1fr)}.ticket-row{cursor:pointer}.ticket-row:hover td{background:rgba(88,101,242,.08)}
+.modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.68);display:none;align-items:center;justify-content:center;padding:20px;z-index:50}.modal-backdrop.open{display:flex}
+.modal-card{width:min(540px,100%);max-height:85vh;overflow:auto;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:22px}
+.modal-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px}.ticket-detail{background:var(--surface);border-radius:8px;padding:14px;margin:10px 0;white-space:pre-wrap;word-break:break-word}
+@media(max-width:720px){.ticket-stats{grid-template-columns:repeat(2,1fr)}.ticket-button-row{grid-template-columns:72px 1fr 32px}.upload-box{align-items:flex-start}}
 </style>
 </head>
 <body>
@@ -193,14 +206,14 @@ tr:last-child td{border-bottom:none}
         </div>
         <div class="form-row">
           <div class="form-group"><label>Canal (ID)</label><input type="text" id="welcome-channel" placeholder="123456789012345678"></div>
-          <div class="form-group"><label>URL de imagen (opcional)</label><input type="url" id="welcome-img" placeholder="https://…"></div>
+          <div class="form-group"><label>Imagen (opcional)</label><input type="hidden" id="welcome-img"><div class="upload-box" id="welcome-upload-box"><div id="welcome-image-thumb" class="upload-empty">🖼️</div><div class="upload-actions"><input type="file" id="welcome-file" accept="image/png,image/jpeg,image/gif,image/webp" hidden onchange="uploadGreetingImage('welcome',this)"><button class="btn btn-ghost btn-sm" type="button" onclick="document.getElementById('welcome-file').click()">Cargar imagen</button><button class="btn btn-ghost btn-sm" type="button" id="welcome-remove-image" onclick="removeGreetingImage('welcome')" style="display:none">Quitar</button><div class="upload-status" id="welcome-image-status">PNG, JPG, GIF o WebP · máx. 5 MB</div></div></div></div>
         </div>
         <div class="form-group">
           <label>Texto</label>
           <textarea id="welcome-text" placeholder="Bienvenido, {user}! Ya somos {member_count} en {server} 🎉" oninput="updatePreview()"></textarea>
           <div class="hint">Variables: <code>{user}</code> <code>{username}</code> <code>{server}</code> <code>{member_count}</code></div>
         </div>
-        <div class="preview-embed"><strong>Vista previa</strong><p id="welcome-preview">—</p></div>
+        <div class="preview-embed"><strong>Vista previa</strong><p id="welcome-preview">—</p><img id="welcome-preview-image" alt="Vista previa de bienvenida" style="display:none;max-width:100%;max-height:180px;border-radius:6px;margin-top:10px"></div>
         <div class="actions-bar">
           <button class="btn btn-ghost" onclick="loadSettings()">Descartar</button>
           <button class="btn btn-primary" onclick="saveGreetings('welcome')">Guardar bienvenida</button>
@@ -214,13 +227,14 @@ tr:last-child td{border-bottom:none}
         </div>
         <div class="form-row">
           <div class="form-group"><label>Canal (ID)</label><input type="text" id="leave-channel" placeholder="123456789012345678"></div>
-          <div class="form-group"><label>URL de imagen (opcional)</label><input type="url" id="leave-img" placeholder="https://…"></div>
+          <div class="form-group"><label>Imagen (opcional)</label><input type="hidden" id="leave-img"><div class="upload-box" id="leave-upload-box"><div id="leave-image-thumb" class="upload-empty">🖼️</div><div class="upload-actions"><input type="file" id="leave-file" accept="image/png,image/jpeg,image/gif,image/webp" hidden onchange="uploadGreetingImage('leave',this)"><button class="btn btn-ghost btn-sm" type="button" onclick="document.getElementById('leave-file').click()">Cargar imagen</button><button class="btn btn-ghost btn-sm" type="button" id="leave-remove-image" onclick="removeGreetingImage('leave')" style="display:none">Quitar</button><div class="upload-status" id="leave-image-status">PNG, JPG, GIF o WebP · máx. 5 MB</div></div></div></div>
         </div>
         <div class="form-group">
           <label>Texto</label>
-          <textarea id="leave-text" placeholder="Hasta luego, {username}…"></textarea>
+          <textarea id="leave-text" placeholder="Hasta luego, {username}…" oninput="updatePreview()"></textarea>
           <div class="hint">Variables: <code>{user}</code> <code>{username}</code> <code>{server}</code> <code>{member_count}</code></div>
         </div>
+        <div class="preview-embed"><strong>Vista previa</strong><p id="leave-preview">—</p><img id="leave-preview-image" alt="Vista previa de despedida" style="display:none;max-width:100%;max-height:180px;border-radius:6px;margin-top:10px"></div>
         <div class="actions-bar">
           <button class="btn btn-ghost" onclick="loadSettings()">Descartar</button>
           <button class="btn btn-primary" onclick="saveGreetings('leave')">Guardar despedida</button>
@@ -231,7 +245,22 @@ tr:last-child td{border-bottom:none}
     <!-- ═══ TICKETS ═══ -->
     <div class="panel" id="panel-tickets">
       <div class="section-heading">Tickets</div>
-      <div class="section-sub">Configuración del sistema y listado de tickets activos</div>
+      <div class="section-sub">Diseña el panel que verá tu comunidad y administra las solicitudes de soporte</div>
+      <div class="stats-row ticket-stats">
+        <div class="stat-card"><div class="stat-label">Abiertos</div><div class="stat-value green" id="tk-open-count">—</div></div>
+        <div class="stat-card"><div class="stat-label">En atención</div><div class="stat-value blue" id="tk-claimed-count">—</div></div>
+        <div class="stat-card"><div class="stat-label">Cerrados</div><div class="stat-value" id="tk-closed-count">—</div></div>
+        <div class="stat-card"><div class="stat-label">Total</div><div class="stat-value yellow" id="tk-total-count">—</div></div>
+      </div>
+      <div class="card">
+        <div class="card-title">🧩 Creador del panel de tickets <span class="badge">VISTA PREVIA</span></div>
+        <div class="form-group"><label>Título del panel</label><input type="text" id="tk-panel-title" maxlength="100" value="Ayuda y soporte" oninput="updateTicketPreview()"></div>
+        <div class="form-group"><label>Descripción</label><textarea id="tk-panel-description" maxlength="1000" placeholder="Cuéntanos cómo podemos ayudarte…" oninput="updateTicketPreview()">Selecciona una opción para crear un ticket. Nuestro equipo te atenderá pronto.</textarea></div>
+        <div class="form-group"><label>Botones de apertura</label><div id="tk-panel-buttons"></div><button class="btn btn-ghost btn-sm" type="button" onclick="addTicketPanelButton()">＋ Agregar opción</button></div>
+        <label>Vista previa del panel</label><div class="ticket-preview"><div class="ticket-preview-title" id="tk-preview-title">Ayuda y soporte</div><div class="ticket-preview-desc" id="tk-preview-description"></div><div class="ticket-preview-buttons" id="tk-preview-buttons"></div></div>
+        <div class="hint">La configuración se guarda en <code>guild_settings</code>. El bot debe leer <code>ticket_panel_title</code>, <code>ticket_panel_description</code> y <code>ticket_panel_buttons</code> para publicar o actualizar el panel en Discord.</div>
+        <div class="actions-bar"><button class="btn btn-primary" onclick="saveTicketConfig()">Guardar panel</button></div>
+      </div>
       <div class="card">
         <div class="card-title">⚙️ Configuración <span class="badge">ticket_config</span></div>
         <div class="form-row">
@@ -252,6 +281,7 @@ tr:last-child td{border-bottom:none}
             <option value="open">Abiertos</option>
             <option value="closed">Cerrados</option>
           </select>
+          <input type="search" id="tk-search" placeholder="Buscar por ID, título o usuario…" oninput="filterTicketRows()" style="flex:1">
         </div>
         <div id="tk-table"><div class="empty"><div class="spinner"></div></div></div>
       </div>
@@ -398,6 +428,14 @@ tr:last-child td{border-bottom:none}
 </div><!-- /main -->
 </div><!-- /app-wrap -->
 
+<div class="modal-backdrop" id="ticket-modal" onclick="if(event.target===this)closeTicketDetails()">
+  <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="ticket-modal-title">
+    <div class="modal-head"><div><div class="card-title" id="ticket-modal-title" style="margin:0">Detalle del ticket</div><div class="hint" id="ticket-modal-subtitle"></div></div><button class="btn btn-ghost btn-sm" type="button" onclick="closeTicketDetails()">Cerrar</button></div>
+    <div class="ticket-detail" id="ticket-modal-details">—</div>
+    <div id="ticket-modal-meta" class="hint"></div>
+  </div>
+</div>
+
 <div id="toast"><span class="ti">✓</span><span id="toast-msg"></span></div>
 
 <script>
@@ -406,6 +444,7 @@ let API = '', TOKEN = '', GUILD = '';
 const TITLES = {overview:'Resumen',greetings:'Bienvenidas',tickets:'Tickets',colors:'Colores',moderation:'Moderación',warns:'Warns',ia:'IA',permisos:'Permisos'};
 let warnOffset = 0, warnTotal = 0;
 const WARN_LIMIT = 20;
+let ticketRows = [];
 
 // ── Auth ─────────────────────────────────────────────────────────────────────
 function doLogin(){
@@ -500,16 +539,24 @@ function loadSettings(){
     setCheck('welcome-enabled', s.welcome_enabled==='true');
     setVal('welcome-channel', s.welcome_channel_id||'');
     setVal('welcome-img', s.welcome_image_url||'');
+    setGreetingImage('welcome', s.welcome_image_url||'');
     setVal('welcome-text', s.welcome_text||'');
     // Despedidas
     setCheck('leave-enabled', s.leave_enabled==='true');
     setVal('leave-channel', s.leave_channel_id||'');
     setVal('leave-img', s.leave_image_url||'');
+    setGreetingImage('leave', s.leave_image_url||'');
     setVal('leave-text', s.leave_text||'');
     // Tickets
     setVal('tk-cat',  s.ticket_category_id||'');
     setVal('tk-role', s.ticket_staff_role_id||'');
     setVal('tk-log',  s.ticket_log_channel_id||'');
+    setVal('tk-panel-title', s.ticket_panel_title||'Ayuda y soporte');
+    setVal('tk-panel-description', s.ticket_panel_description||'Selecciona una opción para crear un ticket. Nuestro equipo te atenderá pronto.');
+    try {
+      const buttons = JSON.parse(s.ticket_panel_buttons||'[{"emoji":"💡","label":"Sugerencias"},{"emoji":"🚨","label":"Reporte"},{"emoji":"📄","label":"Postulación"}]');
+      renderTicketPanelButtons(Array.isArray(buttons)&&buttons.length?buttons:[{emoji:'🎫',label:'Soporte'}]);
+    } catch { renderTicketPanelButtons([{emoji:'💡',label:'Sugerencias'},{emoji:'🚨',label:'Reporte'},{emoji:'📄',label:'Postulación'}]); }
     // IA
     setVal('ia-prompt',   s.ia_system_prompt || document.getElementById('ia-prompt').value);
     setVal('ia-model',    s.ia_model   || 'qwen/qwen3.8-27b');
@@ -548,6 +595,9 @@ function saveTicketConfig(){
     ticket_category_id:   getVal('tk-cat'),
     ticket_staff_role_id: getVal('tk-role'),
     ticket_log_channel_id:getVal('tk-log'),
+    ticket_panel_title: getVal('tk-panel-title').trim()||'Ayuda y soporte',
+    ticket_panel_description: getVal('tk-panel-description').trim(),
+    ticket_panel_buttons: JSON.stringify(readTicketPanelButtons()),
   };
   apiFetch('/api/settings/'+GUILD, {method:'POST', body:JSON.stringify(data)})
     .then(()=>toast('Configuración de tickets guardada ✅'))
@@ -598,21 +648,43 @@ function clearMemory(){
 // ── Tickets ───────────────────────────────────────────────────────────────────
 function loadTickets(){
   const status = document.getElementById('tk-filter').value;
-  const qs = status ? `?status=${status}&limit=50` : '?limit=50';
+  const qs = status ? `?status=${status}&limit=200` : '?limit=200';
+  apiFetch('/api/tickets/'+GUILD+'/stats').then(s=>{
+    document.getElementById('tk-open-count').textContent = s.open_count ?? 0;
+    document.getElementById('tk-claimed-count').textContent = s.claimed_count ?? 0;
+    document.getElementById('tk-closed-count').textContent = s.closed_count ?? 0;
+    document.getElementById('tk-total-count').textContent = s.total ?? 0;
+  }).catch(()=>{});
   apiFetch('/api/tickets/'+GUILD+qs).then(d=>{
-    const el = document.getElementById('tk-table');
-    if(!d.tickets.length){ el.innerHTML='<div class="empty">Sin tickets</div>'; return; }
-    el.innerHTML = `<table><thead><tr><th>ID</th><th>Opener</th><th>Título</th><th>Estado</th><th>Fecha</th></tr></thead><tbody>
-      ${d.tickets.map(t=>`<tr>
-        <td><code>#${t.id}</code></td>
-        <td><code>${t.opener_id}</code></td>
-        <td>${esc(t.title)}</td>
-        <td><span class="tag tag-${t.status==='open'?'open':'closed'}">${t.status}</span></td>
-        <td>${fmtDate(t.created_at)}</td>
-      </tr>`).join('')}
-    </tbody></table>`;
+    ticketRows = d.tickets||[];
+    filterTicketRows();
   }).catch(e=>{ document.getElementById('tk-table').innerHTML='<div class="empty">Error cargando tickets</div>'; });
 }
+
+function filterTicketRows(){
+  const el = document.getElementById('tk-table');
+  const q = (getVal('tk-search')||'').trim().toLowerCase();
+  const rows = ticketRows.filter(t=>!q||[t.id,t.opener_id,t.title,t.details,t.claimed_by,t.closed_by].some(v=>String(v||'').toLowerCase().includes(q)));
+  if(!rows.length){ el.innerHTML=`<div class="empty">${ticketRows.length?'No hay tickets que coincidan con la búsqueda':'Sin tickets para este filtro'}</div>`; return; }
+  el.innerHTML = `<div style="overflow-x:auto"><table><thead><tr><th>Ticket</th><th>Solicitante</th><th>Asunto</th><th>Asignación</th><th>Estado</th><th>Creado</th></tr></thead><tbody>
+    ${rows.map(t=>`<tr class="ticket-row" onclick="showTicketDetails(${Number(t.id)})" title="Ver detalles">
+      <td><code>#${Number(t.id)}</code></td><td><code>${esc(t.opener_id)}</code></td><td>${esc(t.title||'Sin título')}</td>
+      <td>${t.claimed_by?`<code>${esc(t.claimed_by)}</code>`:'<span class="hint">Sin asignar</span>'}</td>
+      <td><span class="tag tag-${t.status==='open'?'open':'closed'}">${t.status==='open'?'Abierto':'Cerrado'}</span></td><td>${fmtDate(t.created_at)}</td>
+    </tr>`).join('')}
+  </tbody></table></div><div class="hint" style="margin-top:10px">${rows.length} ticket${rows.length===1?'':'s'} · Selecciona una fila para ver el detalle</div>`;
+}
+
+function showTicketDetails(id){
+  const t=ticketRows.find(x=>Number(x.id)===Number(id)); if(!t)return;
+  document.getElementById('ticket-modal-title').textContent=`Ticket #${t.id} · ${t.status==='open'?'Abierto':'Cerrado'}`;
+  document.getElementById('ticket-modal-subtitle').textContent=`Creado ${fmtDate(t.created_at)}`;
+  document.getElementById('ticket-modal-details').textContent=t.details||'Este ticket no contiene detalles adicionales.';
+  document.getElementById('ticket-modal-meta').innerHTML=`Solicitante: <code>${esc(t.opener_id)}</code><br>Canal: <code>${esc(t.channel_id)}</code><br>Atendido por: <code>${esc(t.claimed_by||'Sin asignar')}</code><br>Cerrado por: <code>${esc(t.closed_by||'—')}</code><br>Cierre: ${fmtDate(t.closed_at)}`;
+  document.getElementById('ticket-modal').classList.add('open');
+}
+
+function closeTicketDetails(){document.getElementById('ticket-modal').classList.remove('open');}
 
 // ── Colors ────────────────────────────────────────────────────────────────────
 const COLOR_DEFS = {
@@ -741,14 +813,69 @@ function addRoleChip(type){
   setVal(inputId,'');
 }
 
+// ── Imágenes de bienvenida/despedida ──────────────────────────────────────────
+function setGreetingImage(kind,url){
+  setVal(`${kind}-img`,url||'');
+  const thumb=document.getElementById(`${kind}-image-thumb`), preview=document.getElementById(`${kind}-preview-image`);
+  const remove=document.getElementById(`${kind}-remove-image`);
+  if(url){
+    thumb.className=''; thumb.innerHTML=`<img class="upload-thumb" src="${esc(url)}" alt="Imagen de ${kind==='welcome'?'bienvenida':'despedida'}">`;
+    preview.src=url; preview.style.display='block'; remove.style.display='inline-flex';
+  } else {
+    thumb.className='upload-empty'; thumb.textContent='🖼️'; preview.removeAttribute('src'); preview.style.display='none'; remove.style.display='none';
+  }
+}
+
+async function uploadGreetingImage(kind,input){
+  const file=input.files&&input.files[0]; if(!file)return;
+  if(file.size>5*1024*1024){toast('La imagen supera el límite de 5 MB','error');input.value='';return;}
+  const status=document.getElementById(`${kind}-image-status`); status.textContent='Subiendo imagen…';
+  const body=new FormData(); body.append('image',file);
+  try{
+    const response=await fetch(`${API}/api/uploads/${GUILD}/${kind}`,{method:'POST',headers:{'X-Dashboard-Token':TOKEN},body});
+    const data=await response.json(); if(!response.ok)throw new Error(data.error||'No se pudo subir la imagen');
+    setGreetingImage(kind,data.url); status.textContent=`Imagen cargada · ${(data.size/1024).toFixed(0)} KB`;
+    toast('Imagen cargada y guardada ✅');
+  }catch(error){status.textContent='PNG, JPG, GIF o WebP · máx. 5 MB';toast(error.message||'Error al subir la imagen','error');}
+  finally{input.value='';}
+}
+
+async function removeGreetingImage(kind){
+  try{
+    const response=await fetch(`${API}/api/uploads/${GUILD}/${kind}`,{method:'DELETE',headers:{'X-Dashboard-Token':TOKEN}});
+    const data=await response.json(); if(!response.ok)throw new Error(data.error||'No se pudo quitar la imagen');
+    setGreetingImage(kind,'');document.getElementById(`${kind}-image-status`).textContent='PNG, JPG, GIF o WebP · máx. 5 MB';
+    toast('Imagen quitada');
+  }catch(error){toast(error.message||'Error al quitar la imagen','error');}
+}
+
+// ── Creador del panel de tickets ──────────────────────────────────────────────
+function renderTicketPanelButtons(buttons){
+  const list=document.getElementById('tk-panel-buttons');
+  list.innerHTML=(buttons||[]).slice(0,10).map((b,i)=>`<div class="ticket-button-row"><input class="tpanel-emoji" type="text" maxlength="8" aria-label="Emoji del botón ${i+1}" value="${esc(b.emoji||'🎫')}" oninput="updateTicketPreview()"><input class="tpanel-label" type="text" maxlength="40" aria-label="Texto del botón ${i+1}" value="${esc(b.label||'Soporte')}" placeholder="Nombre de la opción" oninput="updateTicketPreview()"><button class="btn btn-ghost btn-sm" type="button" aria-label="Quitar botón" onclick="this.parentElement.remove();updateTicketPreview()">×</button></div>`).join('');
+  updateTicketPreview();
+}
+function readTicketPanelButtons(){
+  return [...document.querySelectorAll('#tk-panel-buttons .ticket-button-row')].map(row=>({emoji:row.querySelector('.tpanel-emoji').value.trim()||'🎫',label:row.querySelector('.tpanel-label').value.trim()})).filter(b=>b.label).slice(0,10);
+}
+function addTicketPanelButton(){
+  const buttons=readTicketPanelButtons(); if(buttons.length>=10){toast('Puedes agregar hasta 10 opciones','error');return;}
+  buttons.push({emoji:'🎫',label:'Nueva opción'});renderTicketPanelButtons(buttons);
+}
+function updateTicketPreview(){
+  const title=getVal('tk-panel-title').trim()||'Ayuda y soporte';
+  document.getElementById('tk-preview-title').textContent=title;
+  document.getElementById('tk-preview-description').textContent=getVal('tk-panel-description')||'Selecciona una opción para crear un ticket.';
+  document.getElementById('tk-preview-buttons').innerHTML=readTicketPanelButtons().map(b=>`<button class="ticket-preview-button" type="button">${esc(b.emoji)} &nbsp; ${esc(b.label)}</button>`).join('');
+}
+
 // ── Preview ───────────────────────────────────────────────────────────────────
+function previewGreeting(text){
+  return (text||'').replace(/{user}/g,'@NuevoMiembro').replace(/{username}/g,'NuevoMiembro').replace(/{server}/g,'TuServidor').replace(/{member_count}/g,'1 337')||'—';
+}
 function updatePreview(){
-  const text = getVal('welcome-text');
-  document.getElementById('welcome-preview').textContent = text
-    .replace(/{user}/g,'@NuevoMiembro')
-    .replace(/{username}/g,'NuevoMiembro')
-    .replace(/{server}/g,'TuServidor')
-    .replace(/{member_count}/g,'1 337') || '—';
+  document.getElementById('welcome-preview').textContent=previewGreeting(getVal('welcome-text'));
+  document.getElementById('leave-preview').textContent=previewGreeting(getVal('leave-text'));
 }
 
 // ── Toast ─────────────────────────────────────────────────────────────────────
