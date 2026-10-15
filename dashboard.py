@@ -1,7 +1,6 @@
 """
 dashboard.py — Web Service standalone para Render.
-Solo Flask + asyncpg. No necesita el bot corriendo.
-Comparte la misma DATABASE_URL de Neon que usa Abo en Railway.
+Compatible con Python 3.14+ (sin type annotations en variables globales).
 """
 import os
 import asyncio
@@ -16,16 +15,17 @@ load_dotenv()
 
 DATABASE_URL     = os.getenv("DATABASE_URL", "")
 DASHBOARD_SECRET = os.getenv("DASHBOARD_SECRET", "")
-PORT             = int(os.getenv("PORT", "10000"))   # Render inyecta PORT automáticamente
+PORT             = int(os.getenv("PORT", "10000"))
 
 app = Flask(__name__, static_folder="dashboard_static", static_url_path="")
 
-# ── asyncpg pool ─────────────────────────────────────────────────────────────
-_pool: asyncpg.Pool | None = None
-_loop: asyncio.AbstractEventLoop | None = None
+# ── IMPORTANTE: sin type annotations para compatibilidad con Python 3.14 ──────
+# Python 3.14 no permite `global x` si x fue declarada con anotación de tipo
+_pool = None   # asyncpg.Pool
+_loop = None   # asyncio.AbstractEventLoop
 
 
-def _normalize_dsn(dsn: str) -> str:
+def _normalize_dsn(dsn):
     from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
     p = urlsplit(dsn)
     q = [(k, v) for k, v in parse_qsl(p.query, keep_blank_values=True)
@@ -180,11 +180,15 @@ def get_tickets(guild_id):
                      closed_at  AT TIME ZONE 'UTC' AS closed_at
               FROM tickets WHERE guild_id = $1"""
     if status:
-        rows = run_async(_fetch(base + " AND status=$2 ORDER BY created_at DESC LIMIT $3 OFFSET $4",
-                                guild_id, status, limit, offset))
+        rows = run_async(_fetch(
+            base + " AND status=$2 ORDER BY created_at DESC LIMIT $3 OFFSET $4",
+            guild_id, status, limit, offset
+        ))
     else:
-        rows = run_async(_fetch(base + " ORDER BY created_at DESC LIMIT $2 OFFSET $3",
-                                guild_id, limit, offset))
+        rows = run_async(_fetch(
+            base + " ORDER BY created_at DESC LIMIT $2 OFFSET $3",
+            guild_id, limit, offset
+        ))
 
     total = run_async(_fetchval("SELECT COUNT(*) FROM tickets WHERE guild_id=$1", guild_id))
 
@@ -262,7 +266,7 @@ def get_color_roles(guild_id):
     rows = run_async(_fetch(
         "SELECT categoria, clave, role_id FROM color_roles WHERE guild_id=$1", guild_id
     ))
-    result: dict = {}
+    result = {}
     for r in rows:
         result.setdefault(r["categoria"], {})[r["clave"]] = r["role_id"]
     return jsonify(result)
@@ -295,7 +299,7 @@ def clear_all_memory():
     return jsonify({"ok": True})
 
 
-# ── Healthcheck para Render ───────────────────────────────────────────────────
+# ── Healthcheck ───────────────────────────────────────────────────────────────
 @app.get("/health")
 def health():
     return jsonify({"status": "ok"}), 200
@@ -305,25 +309,3 @@ def health():
 @app.get("/")
 def serve_dashboard():
     return send_from_directory("dashboard_static", "index.html")
-
-
-# ── Arranque ──────────────────────────────────────────────────────────────────
-def _run_asyncio_loop(loop: asyncio.AbstractEventLoop):
-    asyncio.set_event_loop(loop)
-    loop.run_forever()
-
-
-if __name__ == "__main__":
-    global _loop
-    _loop = asyncio.new_event_loop()
-
-    # Inicia el loop de asyncio en un hilo aparte
-    t = threading.Thread(target=_run_asyncio_loop, args=(_loop,), daemon=True)
-    t.start()
-
-    # Crea el pool de Neon
-    asyncio.run_coroutine_threadsafe(_init_pool(), _loop).result(timeout=15)
-
-    print(f"[Abo Dashboard] Escuchando en 0.0.0.0:{PORT}")
-    # Gunicorn/Render manejará el proceso; en local usa el servidor de Flask
-    app.run(host="0.0.0.0", port=PORT, debug=False)
