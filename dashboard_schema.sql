@@ -73,6 +73,21 @@ CREATE INDEX IF NOT EXISTS idx_tickets_guild_opener_status
 CREATE UNIQUE INDEX IF NOT EXISTS idx_tickets_one_open_per_user
     ON tickets (guild_id, opener_id) WHERE status = 'open';
 
+CREATE TABLE IF NOT EXISTS ticket_panels (
+    id BIGSERIAL PRIMARY KEY,
+    guild_id BIGINT NOT NULL,
+    name TEXT NOT NULL,
+    title TEXT NOT NULL,
+    description TEXT NOT NULL,
+    buttons TEXT NOT NULL DEFAULT '[{"emoji":"🎫","label":"Crear ticket"}]',
+    channel_id BIGINT,
+    message_id BIGINT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (guild_id, name)
+);
+CREATE INDEX IF NOT EXISTS idx_ticket_panels_guild ON ticket_panels (guild_id, updated_at DESC);
+
 CREATE TABLE IF NOT EXISTS schema_migrations (
     migration_key TEXT PRIMARY KEY,
     applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()

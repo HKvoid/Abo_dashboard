@@ -7,6 +7,7 @@ import os
 import asyncio
 import threading
 import io
+import json
 import asyncpg
 from PIL import Image, UnidentifiedImageError
 
@@ -425,6 +426,94 @@ def get_color_roles(guild_id):
         result.setdefault(r["categoria"], {})[r["clave"]] = r["role_id"]
     return jsonify(result)
 
+
+# ── Paneles de tickets ────────────────────────────────────────────────────────
+@app.get("/api/ticket-panels/<int:guild_id>")
+@require_auth
+def get_ticket_panels(guild_id):
+    rows = run_async(_fetch(
+        """SELECT id, name, title, description, buttons, channel_id, message_id,
+                  created_at AT TIME ZONE 'UTC' AS created_at,
+                  updated_at AT TIME ZONE 'UTC' AS updated_at
+           FROM ticket_panels WHERE guild_id=$1 ORDER BY name""", guild_id
+    ))
+    result = []
+    for row in rows:
+        item = dict(row)
+        try:
+            item["buttons"] = json.loads(item["buttons"] or "[]")
+        except (TypeError, json.JSONDecodeError):
+            item["buttons"] = []
+        for key in ("created_at", "updated_at"):
+            if item.get(key): item[key] = item[key].isoformat()
+        result.append(item)
+    return jsonify({"panels": result})
+
+
+def _panel_payload(body):
+    name = str(body.get("name", "")).strip()[:80]
+    title = str(body.get("title", "Ayuda y soporte")).strip()[:100]
+    description = str(body.get("description", "Selecciona una opción para crear un ticket.")).strip()[:1000]
+    buttons = body.get("buttons", [])
+    if not name:
+        raise ValueError("El nombre del panel es obligatorio")
+    if not isinstance(buttons, list) or not buttons:
+        raise ValueError("Agrega al menos un botón")
+    clean = []
+    for item in buttons[:10]:
+        if not isinstance(item, dict): continue
+        label = str(item.get("label", "")).strip()[:40]
+        if label: clean.append({"emoji": str(item.get("emoji", "🎫"))[:8] or "🎫", "label": label})
+    if not clean:
+        raise ValueError("Agrega al menos un botón válido")
+    return name, title or name, description, json.dumps(clean, ensure_ascii=False)
+
+
+@app.post("/api/ticket-panels/<int:guild_id>")
+@require_auth
+def create_ticket_panel(guild_id):
+    try:
+        name, title, description, buttons = _panel_payload(request.get_json(force=True) or {})
+    except ValueError as error:
+        return jsonify({"error": str(error)}), 400
+    try:
+        row = run_async(_fetchrow(
+            """INSERT INTO ticket_panels (guild_id, name, title, description, buttons)
+               VALUES ($1,$2,$3,$4,$5) RETURNING id""",
+            guild_id, name, title, description, buttons,
+        ))
+    except asyncpg.UniqueViolationError:
+        return jsonify({"error": "Ya existe un panel con ese nombre"}), 409
+    return jsonify({"ok": True, "id": row["id"]}), 201
+
+
+@app.put("/api/ticket-panels/<int:guild_id>/<int:panel_id>")
+@require_auth
+def update_ticket_panel(guild_id, panel_id):
+    try:
+        name, title, description, buttons = _panel_payload(request.get_json(force=True) or {})
+    except ValueError as error:
+        return jsonify({"error": str(error)}), 400
+    try:
+        status = run_async(_execute(
+            """UPDATE ticket_panels SET name=$1, title=$2, description=$3, buttons=$4,
+                      updated_at=NOW() WHERE id=$5 AND guild_id=$6""",
+            name, title, description, buttons, panel_id, guild_id,
+        ))
+    except asyncpg.UniqueViolationError:
+        return jsonify({"error": "Ya existe un panel con ese nombre"}), 409
+    if status.endswith("0"):
+        return jsonify({"error": "Panel no encontrado"}), 404
+    return jsonify({"ok": True})
+
+
+@app.delete("/api/ticket-panels/<int:guild_id>/<int:panel_id>")
+@require_auth
+def delete_ticket_panel(guild_id, panel_id):
+    status = run_async(_execute("DELETE FROM ticket_panels WHERE id=$1 AND guild_id=$2", panel_id, guild_id))
+    if status.endswith("0"):
+        return jsonify({"error": "Panel no encontrado"}), 404
+    return jsonify({"ok": True})
 
 # ── Stats ─────────────────────────────────────────────────────────────────────
 @app.get("/api/stats/<int:guild_id>")
