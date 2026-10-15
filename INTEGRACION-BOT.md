@@ -12,3 +12,7 @@ No copies archivos Python entre ambos proyectos: el contrato de integración es 
 ## Múltiples paneles
 
 En la sección Tickets puedes crear, editar, seleccionar y eliminar paneles. Cada diseño se guarda en `ticket_panels`; para publicarlo, usa `/ticket_panel` en Discord y selecciona el panel por nombre.
+
+## Estilos e imagen
+
+Cada botón se puede guardar como oscuro, verde vivo, rojo vivo o azul. También puedes indicar una URL pública de imagen para el embed del panel.

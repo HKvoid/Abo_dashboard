@@ -79,6 +79,7 @@ CREATE TABLE IF NOT EXISTS ticket_panels (
     name TEXT NOT NULL,
     title TEXT NOT NULL,
     description TEXT NOT NULL,
+    image_url TEXT NOT NULL DEFAULT '',
     buttons TEXT NOT NULL DEFAULT '[{"emoji":"🎫","label":"Crear ticket"}]',
     channel_id BIGINT,
     message_id BIGINT,
@@ -86,6 +87,7 @@ CREATE TABLE IF NOT EXISTS ticket_panels (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     UNIQUE (guild_id, name)
 );
+ALTER TABLE ticket_panels ADD COLUMN IF NOT EXISTS image_url TEXT NOT NULL DEFAULT '';
 CREATE INDEX IF NOT EXISTS idx_ticket_panels_guild ON ticket_panels (guild_id, updated_at DESC);
 
 CREATE TABLE IF NOT EXISTS schema_migrations (

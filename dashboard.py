@@ -432,7 +432,7 @@ def get_color_roles(guild_id):
 @require_auth
 def get_ticket_panels(guild_id):
     rows = run_async(_fetch(
-        """SELECT id, name, title, description, buttons, channel_id, message_id,
+        """SELECT id, name, title, description, image_url, buttons, channel_id, message_id,
                   created_at AT TIME ZONE 'UTC' AS created_at,
                   updated_at AT TIME ZONE 'UTC' AS updated_at
            FROM ticket_panels WHERE guild_id=$1 ORDER BY name""", guild_id
@@ -454,6 +454,7 @@ def _panel_payload(body):
     name = str(body.get("name", "")).strip()[:80]
     title = str(body.get("title", "Ayuda y soporte")).strip()[:100]
     description = str(body.get("description", "Selecciona una opción para crear un ticket.")).strip()[:1000]
+    image_url = str(body.get("image_url", "")).strip()[:1000]
     buttons = body.get("buttons", [])
     if not name:
         raise ValueError("El nombre del panel es obligatorio")
@@ -463,24 +464,29 @@ def _panel_payload(body):
     for item in buttons[:10]:
         if not isinstance(item, dict): continue
         label = str(item.get("label", "")).strip()[:40]
-        if label: clean.append({"emoji": str(item.get("emoji", "🎫"))[:8] or "🎫", "label": label})
+        if label:
+            style = str(item.get("style", "secondary"))
+            if style not in {"secondary", "success", "danger", "primary"}: style = "secondary"
+            clean.append({"emoji": str(item.get("emoji", "🎫"))[:8] or "🎫", "label": label, "style": style})
     if not clean:
         raise ValueError("Agrega al menos un botón válido")
-    return name, title or name, description, json.dumps(clean, ensure_ascii=False)
+    if image_url and not image_url.startswith(("http://", "https://")):
+        raise ValueError("La imagen debe ser una URL http:// o https://")
+    return name, title or name, description, image_url, json.dumps(clean, ensure_ascii=False)
 
 
 @app.post("/api/ticket-panels/<int:guild_id>")
 @require_auth
 def create_ticket_panel(guild_id):
     try:
-        name, title, description, buttons = _panel_payload(request.get_json(force=True) or {})
+        name, title, description, image_url, buttons = _panel_payload(request.get_json(force=True) or {})
     except ValueError as error:
         return jsonify({"error": str(error)}), 400
     try:
         row = run_async(_fetchrow(
-            """INSERT INTO ticket_panels (guild_id, name, title, description, buttons)
-               VALUES ($1,$2,$3,$4,$5) RETURNING id""",
-            guild_id, name, title, description, buttons,
+            """INSERT INTO ticket_panels (guild_id, name, title, description, image_url, buttons)
+               VALUES ($1,$2,$3,$4,$5,$6) RETURNING id""",
+            guild_id, name, title, description, image_url, buttons,
         ))
     except asyncpg.UniqueViolationError:
         return jsonify({"error": "Ya existe un panel con ese nombre"}), 409
@@ -491,14 +497,14 @@ def create_ticket_panel(guild_id):
 @require_auth
 def update_ticket_panel(guild_id, panel_id):
     try:
-        name, title, description, buttons = _panel_payload(request.get_json(force=True) or {})
+        name, title, description, image_url, buttons = _panel_payload(request.get_json(force=True) or {})
     except ValueError as error:
         return jsonify({"error": str(error)}), 400
     try:
         status = run_async(_execute(
-            """UPDATE ticket_panels SET name=$1, title=$2, description=$3, buttons=$4,
-                      updated_at=NOW() WHERE id=$5 AND guild_id=$6""",
-            name, title, description, buttons, panel_id, guild_id,
+            """UPDATE ticket_panels SET name=$1, title=$2, description=$3, image_url=$4, buttons=$5,
+                      updated_at=NOW() WHERE id=$6 AND guild_id=$7""",
+            name, title, description, image_url, buttons, panel_id, guild_id,
         ))
     except asyncpg.UniqueViolationError:
         return jsonify({"error": "Ya existe un panel con ese nombre"}), 409
