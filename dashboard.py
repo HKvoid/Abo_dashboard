@@ -6,19 +6,25 @@ porque on_starting corre en el master y los workers no heredan el loop.
 import os
 import asyncio
 import threading
+import io
 import asyncpg
+from PIL import Image, UnidentifiedImageError
 
-from flask import Flask, jsonify, request, send_from_directory, g
+from flask import Flask, jsonify, request, send_from_directory, Response
 from functools import wraps
 from dotenv import load_dotenv
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 load_dotenv()
 
 DATABASE_URL     = os.getenv("DATABASE_URL", "")
 DASHBOARD_SECRET = os.getenv("DASHBOARD_SECRET", "")
 PORT             = int(os.getenv("PORT", "10000"))
+MAX_IMAGE_BYTES  = 5 * 1024 * 1024
 
 app = Flask(__name__, static_folder="dashboard_static", static_url_path="")
+app.config["MAX_CONTENT_LENGTH"] = MAX_IMAGE_BYTES + 64 * 1024  # margen para multipart/form-data
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
 
 _pool = None
 _loop = None
@@ -145,6 +151,109 @@ def delete_setting(guild_id, key):
     return jsonify({"ok": True})
 
 
+# ── Imágenes de bienvenida/despedida ──────────────────────────────────────────
+_IMAGE_TYPES = {
+    "image/png": lambda b: b.startswith(b"\x89PNG\r\n\x1a\n"),
+    "image/jpeg": lambda b: b.startswith(b"\xff\xd8\xff"),
+    "image/gif": lambda b: b.startswith((b"GIF87a", b"GIF89a")),
+    "image/webp": lambda b: len(b) >= 12 and b[:4] == b"RIFF" and b[8:12] == b"WEBP",
+}
+_GREETING_KINDS = {"welcome", "leave"}
+
+
+def _public_base_url():
+    return (os.getenv("PUBLIC_BASE_URL") or os.getenv("RENDER_EXTERNAL_URL") or request.url_root).rstrip("/")
+
+
+@app.post("/api/uploads/<int:guild_id>/<kind>")
+@require_auth
+def upload_greeting_image(guild_id, kind):
+    if kind not in _GREETING_KINDS:
+        return jsonify({"error": "Tipo de imagen no válido"}), 400
+    image = request.files.get("image")
+    if not image or not image.filename:
+        return jsonify({"error": "Selecciona una imagen"}), 400
+    mime = (image.mimetype or "").lower()
+    validator = _IMAGE_TYPES.get(mime)
+    if not validator:
+        return jsonify({"error": "Formato no compatible. Usa PNG, JPG, GIF o WebP"}), 415
+    raw = image.stream.read(MAX_IMAGE_BYTES + 1)
+    if not raw:
+        return jsonify({"error": "El archivo está vacío"}), 400
+    if len(raw) > MAX_IMAGE_BYTES:
+        return jsonify({"error": "La imagen supera el límite de 5 MB"}), 413
+    if not validator(raw):
+        return jsonify({"error": "El contenido no coincide con el formato de imagen"}), 415
+    try:
+        with Image.open(io.BytesIO(raw)) as decoded:
+            expected_format = {"image/png": "PNG", "image/jpeg": "JPEG", "image/gif": "GIF", "image/webp": "WEBP"}[mime]
+            if decoded.format != expected_format or decoded.width * decoded.height > 40_000_000:
+                return jsonify({"error": "La imagen no es válida o tiene dimensiones demasiado grandes"}), 415
+            decoded.verify()
+    except (UnidentifiedImageError, OSError, Image.DecompressionBombError, Image.DecompressionBombWarning):
+        return jsonify({"error": "No se pudo validar el archivo como imagen"}), 415
+    url = f"{_public_base_url()}/api/uploads/{guild_id}/{kind}"
+
+    async def _store():
+        async with _pool.acquire() as conn:
+            await conn.execute("""CREATE TABLE IF NOT EXISTS dashboard_uploads (
+                guild_id BIGINT NOT NULL,
+                kind TEXT NOT NULL,
+                mime_type TEXT NOT NULL,
+                file_data BYTEA NOT NULL,
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                PRIMARY KEY (guild_id, kind)
+            )""")
+            await conn.execute("""INSERT INTO dashboard_uploads (guild_id, kind, mime_type, file_data)
+                VALUES ($1, $2, $3, $4)
+                ON CONFLICT (guild_id, kind) DO UPDATE SET
+                mime_type=EXCLUDED.mime_type, file_data=EXCLUDED.file_data, updated_at=NOW()""",
+                guild_id, kind, mime, raw)
+            await conn.execute("""INSERT INTO guild_settings (guild_id, setting_key, setting_value)
+                VALUES ($1, $2, $3)
+                ON CONFLICT (guild_id, setting_key) DO UPDATE SET
+                setting_value=EXCLUDED.setting_value, updated_at=NOW()""",
+                guild_id, f"{kind}_image_url", url)
+        return True
+
+    run_async(_store())
+    return jsonify({"ok": True, "url": url, "mime_type": mime, "size": len(raw)})
+
+
+@app.get("/api/uploads/<int:guild_id>/<kind>")
+def get_greeting_image(guild_id, kind):
+    if kind not in _GREETING_KINDS:
+        return jsonify({"error": "Imagen no encontrada"}), 404
+    row = run_async(_fetchrow(
+        "SELECT mime_type, file_data FROM dashboard_uploads WHERE guild_id=$1 AND kind=$2",
+        guild_id, kind))
+    if not row:
+        return jsonify({"error": "Imagen no encontrada"}), 404
+    return Response(bytes(row["file_data"]), mimetype=row["mime_type"],
+                    headers={"Cache-Control": "public, max-age=3600", "X-Content-Type-Options": "nosniff"})
+
+
+@app.delete("/api/uploads/<int:guild_id>/<kind>")
+@require_auth
+def delete_greeting_image(guild_id, kind):
+    if kind not in _GREETING_KINDS:
+        return jsonify({"error": "Tipo de imagen no válido"}), 400
+    async def _delete():
+        async with _pool.acquire() as conn:
+            await conn.execute("DELETE FROM dashboard_uploads WHERE guild_id=$1 AND kind=$2", guild_id, kind)
+            await conn.execute("""INSERT INTO guild_settings (guild_id, setting_key, setting_value)
+                VALUES ($1, $2, '')
+                ON CONFLICT (guild_id, setting_key) DO UPDATE SET
+                setting_value='', updated_at=NOW()""", guild_id, f"{kind}_image_url")
+    run_async(_delete())
+    return jsonify({"ok": True})
+
+
+@app.errorhandler(413)
+def request_too_large(_error):
+    return jsonify({"error": "La imagen supera el límite de 5 MB"}), 413
+
+
 # ── Warns ─────────────────────────────────────────────────────────────────────
 @app.get("/api/warns/<int:guild_id>")
 @require_auth
@@ -236,6 +345,7 @@ def get_tickets(guild_id):
 def ticket_stats(guild_id):
     row = run_async(_fetchrow(
         """SELECT COUNT(*) FILTER (WHERE status='open')   AS open_count,
+                  COUNT(*) FILTER (WHERE status='open' AND claimed_by IS NOT NULL) AS claimed_count,
                   COUNT(*) FILTER (WHERE status='closed') AS closed_count,
                   COUNT(*)                                 AS total
            FROM tickets WHERE guild_id=$1""", guild_id
