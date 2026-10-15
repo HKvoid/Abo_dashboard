@@ -132,8 +132,8 @@ tr:last-child td{border-bottom:none}
       <input type="text" id="li-guild" placeholder="123456789012345678">
     </div>
     <div class="form-group">
-      <label>URL de la API (sin / al final)</label>
-      <input type="text" id="li-url" placeholder="http://localhost:5001" value="http://localhost:5001">
+      <label>URL de la API (opcional; por defecto usa esta misma página)</label>
+      <input type="text" id="li-url" placeholder="https://tu-dashboard.onrender.com">
     </div>
     <button class="btn btn-primary" style="width:100%" onclick="doLogin()">Entrar</button>
     <div id="li-err" style="color:var(--red);font-size:12px;margin-top:10px;display:none"></div>
@@ -448,7 +448,7 @@ let ticketRows = [];
 
 // ── Auth ─────────────────────────────────────────────────────────────────────
 function doLogin(){
-  API   = document.getElementById('li-url').value.replace(/\/$/,'');
+  API   = (document.getElementById('li-url').value.trim().replace(/\/$/,'') || window.location.origin);
   TOKEN = document.getElementById('li-token').value.trim();
   GUILD = document.getElementById('li-guild').value.trim();
   if(!GUILD || !API){ showLoginErr('Completa todos los campos'); return; }
