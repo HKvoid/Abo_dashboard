@@ -253,13 +253,18 @@ tr:last-child td{border-bottom:none}
         <div class="stat-card"><div class="stat-label">Total</div><div class="stat-value yellow" id="tk-total-count">—</div></div>
       </div>
       <div class="card">
-        <div class="card-title">🧩 Creador del panel de tickets <span class="badge">VISTA PREVIA</span></div>
+        <div class="card-title">🧩 Paneles de tickets <span class="badge">MÚLTIPLES</span></div>
+        <div class="form-row">
+          <div class="form-group"><label>Panel guardado</label><select id="tk-panel-select" onchange="selectTicketPanel()"><option value="">Nuevo panel</option></select></div>
+          <div class="form-group" style="display:flex;align-items:end;gap:8px"><button class="btn btn-ghost" type="button" onclick="newTicketPanel()">＋ Nuevo</button><button class="btn btn-danger" type="button" onclick="deleteTicketPanel()">Eliminar</button></div>
+        </div>
+        <div class="form-group"><label>Nombre interno del panel</label><input type="text" id="tk-panel-name" maxlength="80" placeholder="Soporte general"></div>
         <div class="form-group"><label>Título del panel</label><input type="text" id="tk-panel-title" maxlength="100" value="Ayuda y soporte" oninput="updateTicketPreview()"></div>
         <div class="form-group"><label>Descripción</label><textarea id="tk-panel-description" maxlength="1000" placeholder="Cuéntanos cómo podemos ayudarte…" oninput="updateTicketPreview()">Selecciona una opción para crear un ticket. Nuestro equipo te atenderá pronto.</textarea></div>
         <div class="form-group"><label>Botones de apertura</label><div id="tk-panel-buttons"></div><button class="btn btn-ghost btn-sm" type="button" onclick="addTicketPanelButton()">＋ Agregar opción</button></div>
         <label>Vista previa del panel</label><div class="ticket-preview"><div class="ticket-preview-title" id="tk-preview-title">Ayuda y soporte</div><div class="ticket-preview-desc" id="tk-preview-description"></div><div class="ticket-preview-buttons" id="tk-preview-buttons"></div></div>
-        <div class="hint">La configuración se guarda en <code>guild_settings</code>. El bot debe leer <code>ticket_panel_title</code>, <code>ticket_panel_description</code> y <code>ticket_panel_buttons</code> para publicar o actualizar el panel en Discord.</div>
-        <div class="actions-bar"><button class="btn btn-primary" onclick="saveTicketConfig()">Guardar panel</button></div>
+        <div class="hint">Puedes guardar varios diseños. Después publícalos desde Discord con <code>/ticket_panel</code> y selecciona el nombre del panel.</div>
+        <div class="actions-bar"><button class="btn btn-primary" onclick="saveTicketPanel()">Guardar panel</button></div>
       </div>
       <div class="card">
         <div class="card-title">⚙️ Configuración <span class="badge">ticket_config</span></div>
@@ -270,7 +275,7 @@ tr:last-child td{border-bottom:none}
         <div class="form-group"><label>ID del canal de registros (logs)</label><input type="text" id="tk-log" placeholder="ID del canal de logs"></div>
         <div class="actions-bar">
           <button class="btn btn-ghost" onclick="loadSettings()">Descartar</button>
-          <button class="btn btn-primary" onclick="saveTicketConfig()">Guardar</button>
+          <button class="btn btn-primary" onclick="saveTicketConfig()">Guardar configuración</button>
         </div>
       </div>
       <div class="card">
@@ -547,16 +552,11 @@ function loadSettings(){
     setVal('leave-img', s.leave_image_url||'');
     setGreetingImage('leave', s.leave_image_url||'');
     setVal('leave-text', s.leave_text||'');
-    // Tickets
+    // Configuración base de tickets; los diseños viven en ticket_panels.
     setVal('tk-cat',  s.ticket_category_id||'');
     setVal('tk-role', s.ticket_staff_role_id||'');
     setVal('tk-log',  s.ticket_log_channel_id||'');
-    setVal('tk-panel-title', s.ticket_panel_title||'Ayuda y soporte');
-    setVal('tk-panel-description', s.ticket_panel_description||'Selecciona una opción para crear un ticket. Nuestro equipo te atenderá pronto.');
-    try {
-      const buttons = JSON.parse(s.ticket_panel_buttons||'[{"emoji":"💡","label":"Sugerencias"},{"emoji":"🚨","label":"Reporte"},{"emoji":"📄","label":"Postulación"}]');
-      renderTicketPanelButtons(Array.isArray(buttons)&&buttons.length?buttons:[{emoji:'🎫',label:'Soporte'}]);
-    } catch { renderTicketPanelButtons([{emoji:'💡',label:'Sugerencias'},{emoji:'🚨',label:'Reporte'},{emoji:'📄',label:'Postulación'}]); }
+    loadTicketPanels();
     // IA
     setVal('ia-prompt',   s.ia_system_prompt || document.getElementById('ia-prompt').value);
     setVal('ia-model',    s.ia_model   || 'qwen/qwen3.8-27b');
@@ -592,16 +592,48 @@ function saveGreetings(type){
 
 function saveTicketConfig(){
   const data = {
-    ticket_category_id:   getVal('tk-cat'),
+    ticket_category_id: getVal('tk-cat'),
     ticket_staff_role_id: getVal('tk-role'),
-    ticket_log_channel_id:getVal('tk-log'),
-    ticket_panel_title: getVal('tk-panel-title').trim()||'Ayuda y soporte',
-    ticket_panel_description: getVal('tk-panel-description').trim(),
-    ticket_panel_buttons: JSON.stringify(readTicketPanelButtons()),
+    ticket_log_channel_id: getVal('tk-log'),
   };
   apiFetch('/api/settings/'+GUILD, {method:'POST', body:JSON.stringify(data)})
     .then(()=>toast('Configuración de tickets guardada ✅'))
     .catch(()=>toast('Error al guardar','error'));
+}
+let ticketPanels = [];
+function loadTicketPanels(selectId=''){
+  return apiFetch('/api/ticket-panels/'+GUILD).then(data=>{
+    ticketPanels = data.panels||[];
+    const select=document.getElementById('tk-panel-select');
+    select.innerHTML='<option value="">Nuevo panel</option>'+ticketPanels.map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join('');
+    const target=selectId || (ticketPanels[0]?.id||'');
+    select.value=String(target);
+    if(target) selectTicketPanel(); else newTicketPanel(false);
+  }).catch(()=>toast('No se pudieron cargar los paneles','error'));
+}
+function selectTicketPanel(){
+  const panel=ticketPanels.find(p=>String(p.id)===String(getVal('tk-panel-select')));
+  if(!panel) return newTicketPanel(false);
+  setVal('tk-panel-name',panel.name); setVal('tk-panel-title',panel.title); setVal('tk-panel-description',panel.description);
+  renderTicketPanelButtons(panel.buttons||[]); updateTicketPreview();
+}
+function newTicketPanel(show=true){
+  document.getElementById('tk-panel-select').value=''; setVal('tk-panel-name',''); setVal('tk-panel-title','Ayuda y soporte');
+  setVal('tk-panel-description','Selecciona una opción para crear un ticket. Nuestro equipo te atenderá pronto.');
+  renderTicketPanelButtons([{emoji:'🎫',label:'Crear ticket'}]); updateTicketPreview();
+  if(show) toast('Nuevo panel listo');
+}
+function saveTicketPanel(){
+  const name=getVal('tk-panel-name').trim();
+  if(!name){toast('Escribe un nombre para el panel','error');return;}
+  const data={name,title:getVal('tk-panel-title').trim()||'Ayuda y soporte',description:getVal('tk-panel-description').trim(),buttons:readTicketPanelButtons()};
+  const id=getVal('tk-panel-select'); const method=id?'PUT':'POST'; const path=id?`/api/ticket-panels/${GUILD}/${id}`:`/api/ticket-panels/${GUILD}`;
+  apiFetch(path,{method,body:JSON.stringify(data)}).then(result=>loadTicketPanels(result.id||id).then(()=>toast('Panel guardado ✅'))).catch(e=>toast(e.message||'No se pudo guardar el panel','error'));
+}
+function deleteTicketPanel(){
+  const id=getVal('tk-panel-select'); if(!id){toast('Selecciona un panel guardado','error');return;}
+  if(!confirm('¿Eliminar este panel? Los mensajes ya publicados seguirán visibles, pero sus botones dejarán de estar gestionados por este panel.')) return;
+  apiFetch(`/api/ticket-panels/${GUILD}/${id}`,{method:'DELETE'}).then(()=>loadTicketPanels().then(()=>toast('Panel eliminado'))).catch(e=>toast(e.message||'No se pudo eliminar','error'));
 }
 
 function saveAutoMod(){
