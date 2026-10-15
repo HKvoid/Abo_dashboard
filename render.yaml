@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: abo-dashboard
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn dashboard:app -c gunicorn_config.py
+    healthCheckPath: /health
+    envVars:
+      - key: DATABASE_URL
+        sync: false          # la pones tú en el panel de Render
+      - key: DASHBOARD_SECRET
+        sync: false
