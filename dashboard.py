@@ -1,13 +1,14 @@
 """
 dashboard.py — Web Service standalone para Render.
-Compatible con Python 3.14+ (sin type annotations en variables globales).
+El pool asyncpg se inicializa dentro del worker con before_request,
+porque on_starting corre en el master y los workers no heredan el loop.
 """
 import os
 import asyncio
 import threading
 import asyncpg
 
-from flask import Flask, jsonify, request, send_from_directory
+from flask import Flask, jsonify, request, send_from_directory, g
 from functools import wraps
 from dotenv import load_dotenv
 
@@ -19,10 +20,10 @@ PORT             = int(os.getenv("PORT", "10000"))
 
 app = Flask(__name__, static_folder="dashboard_static", static_url_path="")
 
-# ── IMPORTANTE: sin type annotations para compatibilidad con Python 3.14 ──────
-# Python 3.14 no permite `global x` si x fue declarada con anotación de tipo
-_pool = None   # asyncpg.Pool
-_loop = None   # asyncio.AbstractEventLoop
+_pool = None
+_loop = None
+_initialized = False
+_init_lock = threading.Lock()
 
 
 def _normalize_dsn(dsn):
@@ -35,7 +36,30 @@ def _normalize_dsn(dsn):
     return urlunsplit((p.scheme, p.netloc, p.path, urlencode(q), p.fragment))
 
 
-async def _init_pool():
+def _run_loop(loop):
+    asyncio.set_event_loop(loop)
+    loop.run_forever()
+
+
+def _ensure_initialized():
+    """Inicializa el loop y el pool la primera vez que llega un request al worker."""
+    global _pool, _loop, _initialized
+    if _initialized:
+        return
+    with _init_lock:
+        if _initialized:
+            return
+        loop = asyncio.new_event_loop()
+        _loop = loop
+        t = threading.Thread(target=_run_loop, args=(loop,), daemon=True)
+        t.start()
+        future = asyncio.run_coroutine_threadsafe(_init_pool_inner(), loop)
+        future.result(timeout=20)
+        _initialized = True
+        print("[Abo Dashboard] Pool de Neon listo en worker ✅")
+
+
+async def _init_pool_inner():
     global _pool
     _pool = await asyncpg.create_pool(
         dsn=_normalize_dsn(DATABASE_URL),
@@ -46,8 +70,14 @@ async def _init_pool():
     )
 
 
+@app.before_request
+def before_request():
+    if request.path != "/health":
+        _ensure_initialized()
+
+
 def run_async(coro):
-    return asyncio.run_coroutine_threadsafe(coro, _loop).result(timeout=10)
+    return asyncio.run_coroutine_threadsafe(coro, _loop).result(timeout=15)
 
 
 async def _fetch(q, *a):
