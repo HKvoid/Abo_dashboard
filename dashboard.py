@@ -15,6 +15,11 @@ from functools import wraps
 from dotenv import load_dotenv
 from werkzeug.middleware.proxy_fix import ProxyFix
 
+# Contrato compartido con el bot, mantenido como archivo independiente.
+SCHEMA_PATH = os.path.join(os.path.dirname(__file__), "dashboard_schema.sql")
+with open(SCHEMA_PATH, encoding="utf-8") as schema_file:
+    ABO_SCHEMA = schema_file.read()
+
 load_dotenv()
 
 DATABASE_URL     = os.getenv("DATABASE_URL", "")
@@ -67,6 +72,8 @@ def _ensure_initialized():
 
 async def _init_pool_inner():
     global _pool
+    if not DATABASE_URL:
+        raise RuntimeError("Falta DATABASE_URL para iniciar el dashboard")
     _pool = await asyncpg.create_pool(
         dsn=_normalize_dsn(DATABASE_URL),
         ssl="require",
@@ -74,6 +81,13 @@ async def _init_pool_inner():
         command_timeout=20,
         statement_cache_size=0,
     )
+    async with _pool.acquire() as connection:
+        await connection.execute(ABO_SCHEMA)
+        await connection.execute("""CREATE TABLE IF NOT EXISTS dashboard_uploads (
+            guild_id BIGINT NOT NULL, kind TEXT NOT NULL, mime_type TEXT NOT NULL,
+            file_data BYTEA NOT NULL, updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            PRIMARY KEY (guild_id, kind)
+        )""")
 
 
 @app.before_request
@@ -442,7 +456,13 @@ def clear_all_memory():
 # ── Healthcheck ───────────────────────────────────────────────────────────────
 @app.get("/health")
 def health():
-    return jsonify({"status": "ok"}), 200
+    try:
+        _ensure_initialized()
+        run_async(_fetchval("SELECT 1"))
+        return jsonify({"status": "ok", "database": "ok"}), 200
+    except Exception as error:
+        app.logger.warning("Healthcheck sin conexión: %s", error)
+        return jsonify({"status": "degraded", "database": "unavailable"}), 503
 
 
 # ── Frontend ──────────────────────────────────────────────────────────────────

@@ -7,6 +7,8 @@ services:
     healthCheckPath: /health
     envVars:
       - key: DATABASE_URL
-        sync: false          # la pones tú en el panel de Render
+        sync: false
       - key: DASHBOARD_SECRET
+        sync: false
+      - key: PUBLIC_BASE_URL
         sync: false
