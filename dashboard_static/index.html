@@ -261,7 +261,7 @@ tr:last-child td{border-bottom:none}
         <div class="form-group"><label>Nombre interno del panel</label><input type="text" id="tk-panel-name" maxlength="80" placeholder="Soporte general"></div>
         <div class="form-group"><label>Título del panel</label><input type="text" id="tk-panel-title" maxlength="100" value="Ayuda y soporte" oninput="updateTicketPreview()"></div>
         <div class="form-group"><label>Descripción</label><textarea id="tk-panel-description" maxlength="1000" placeholder="Cuéntanos cómo podemos ayudarte…" oninput="updateTicketPreview()">Selecciona una opción para crear un ticket. Nuestro equipo te atenderá pronto.</textarea></div>
-        <div class="form-group"><label>Imagen del embed (URL pública opcional)</label><input type="url" id="tk-panel-image" maxlength="1000" placeholder="https://ejemplo.com/banner.png" oninput="updateTicketPreview()"><div class="hint">Usa una URL pública http:// o https://.</div></div>
+        <div class="form-group"><label>Imagen del embed</label><div class="upload-box"><div id="tk-panel-image-thumb" class="upload-empty">🖼️</div><div class="upload-actions"><input type="file" id="tk-panel-image-file" accept="image/png,image/jpeg,image/gif,image/webp" onchange="chooseTicketPanelImage(this)"><button class="btn btn-ghost btn-sm" type="button" onclick="removeTicketPanelImage()">Quitar imagen</button><span id="tk-panel-image-status" class="upload-status">PNG, JPG, GIF o WebP · máx. 5 MB</span></div></div><div class="hint">La imagen se guarda directamente en Neon, igual que las de bienvenida y despedida.</div></div>
         <div class="form-group"><label>Botones de apertura</label><div id="tk-panel-buttons"></div><button class="btn btn-ghost btn-sm" type="button" onclick="addTicketPanelButton()">＋ Agregar opción</button></div>
         <label>Vista previa del panel</label><div class="ticket-preview"><div class="ticket-preview-title" id="tk-preview-title">Ayuda y soporte</div><div class="ticket-preview-desc" id="tk-preview-description"></div><img id="tk-preview-image" alt="Imagen del panel" style="display:none;max-width:100%;max-height:180px;border-radius:6px;margin:10px 0"><div class="ticket-preview-buttons" id="tk-preview-buttons"></div></div>
         <div class="hint">Puedes guardar varios diseños. Después publícalos desde Discord con <code>/ticket_panel</code> y selecciona el nombre del panel.</div>
@@ -601,7 +601,7 @@ function saveTicketConfig(){
     .then(()=>toast('Configuración de tickets guardada ✅'))
     .catch(()=>toast('Error al guardar','error'));
 }
-let ticketPanels = [];
+let ticketPanels = []; let ticketPanelImageFile = null; let ticketPanelImageUrl = ''; let ticketPanelImageDelete = false;
 function loadTicketPanels(selectId=''){
   return apiFetch('/api/ticket-panels/'+GUILD).then(data=>{
     ticketPanels = data.panels||[];
@@ -615,11 +615,11 @@ function loadTicketPanels(selectId=''){
 function selectTicketPanel(){
   const panel=ticketPanels.find(p=>String(p.id)===String(getVal('tk-panel-select')));
   if(!panel) return newTicketPanel(false);
-  setVal('tk-panel-name',panel.name); setVal('tk-panel-title',panel.title); setVal('tk-panel-description',panel.description); setVal('tk-panel-image',panel.image_url||'');
+  setVal('tk-panel-name',panel.name); setVal('tk-panel-title',panel.title); setVal('tk-panel-description',panel.description); setTicketPanelImage(panel.image_url||'');
   renderTicketPanelButtons(panel.buttons||[]); updateTicketPreview();
 }
 function newTicketPanel(show=true){
-  document.getElementById('tk-panel-select').value=''; setVal('tk-panel-name',''); setVal('tk-panel-title','Ayuda y soporte'); setVal('tk-panel-image','');
+  document.getElementById('tk-panel-select').value=''; setVal('tk-panel-name',''); setVal('tk-panel-title','Ayuda y soporte'); setTicketPanelImage('');
   setVal('tk-panel-description','Selecciona una opción para crear un ticket. Nuestro equipo te atenderá pronto.');
   renderTicketPanelButtons([{emoji:'🎫',label:'Crear ticket'}]); updateTicketPreview();
   if(show) toast('Nuevo panel listo');
@@ -627,9 +627,46 @@ function newTicketPanel(show=true){
 function saveTicketPanel(){
   const name=getVal('tk-panel-name').trim();
   if(!name){toast('Escribe un nombre para el panel','error');return;}
-  const data={name,title:getVal('tk-panel-title').trim()||'Ayuda y soporte',description:getVal('tk-panel-description').trim(),image_url:getVal('tk-panel-image').trim(),buttons:readTicketPanelButtons()};
+  const data={name,title:getVal('tk-panel-title').trim()||'Ayuda y soporte',description:getVal('tk-panel-description').trim(),buttons:readTicketPanelButtons()};
   const id=getVal('tk-panel-select'); const method=id?'PUT':'POST'; const path=id?`/api/ticket-panels/${GUILD}/${id}`:`/api/ticket-panels/${GUILD}`;
-  apiFetch(path,{method,body:JSON.stringify(data)}).then(result=>loadTicketPanels(result.id||id).then(()=>toast('Panel guardado ✅'))).catch(e=>toast(e.message||'No se pudo guardar el panel','error'));
+  apiFetch(path,{method,body:JSON.stringify(data)}).then(result=>{
+    const panelId=result.id||id;
+    if(ticketPanelImageFile) return uploadTicketPanelImage(panelId).then(()=>panelId);
+    if(ticketPanelImageDelete && panelId) return deleteTicketPanelImage(panelId).then(()=>panelId);
+    return panelId;
+  }).then(panelId=>loadTicketPanels(panelId).then(()=>toast('Panel guardado ✅'))).catch(e=>toast(e.message||'No se pudo guardar el panel','error'));
+}
+function setTicketPanelImage(url){
+  ticketPanelImageFile=null; ticketPanelImageUrl=url||''; ticketPanelImageDelete=false;
+  const input=document.getElementById('tk-panel-image-file'); if(input) input.value='';
+  const thumb=document.getElementById('tk-panel-image-thumb'), status=document.getElementById('tk-panel-image-status');
+  if(ticketPanelImageUrl){ thumb.className=''; thumb.innerHTML=`<img class="upload-thumb" src="${esc(ticketPanelImageUrl)}" alt="Imagen del panel">`; status.textContent='Imagen cargada'; }
+  else { thumb.className='upload-empty'; thumb.textContent='🖼️'; status.textContent='PNG, JPG, GIF o WebP · máx. 5 MB'; }
+  updateTicketPreview();
+}
+function chooseTicketPanelImage(input){
+  const file=input.files?.[0]; if(!file)return;
+  if(file.size>5*1024*1024){toast('La imagen supera el límite de 5 MB','error');input.value='';return;}
+  ticketPanelImageFile=file; ticketPanelImageDelete=false; ticketPanelImageUrl=URL.createObjectURL(file);
+  const thumb=document.getElementById('tk-panel-image-thumb'); thumb.className=''; thumb.innerHTML=`<img class="upload-thumb" src="${ticketPanelImageUrl}" alt="Nueva imagen del panel">`;
+  document.getElementById('tk-panel-image-status').textContent=`Lista para guardar · ${(file.size/1024).toFixed(0)} KB`; updateTicketPreview();
+}
+async function uploadTicketPanelImage(panelId){
+  const body=new FormData(); body.append('image',ticketPanelImageFile);
+  const response=await fetch(`${API}/api/ticket-panels/${GUILD}/${panelId}/image`,{method:'POST',headers:{'X-Dashboard-Token':TOKEN},body});
+  const data=await response.json(); if(!response.ok)throw new Error(data.error||'No se pudo subir la imagen');
+  ticketPanelImageFile=null; ticketPanelImageUrl=data.url; ticketPanelImageDelete=false;
+}
+async function deleteTicketPanelImage(panelId){
+  const response=await fetch(`${API}/api/ticket-panels/${GUILD}/${panelId}/image`,{method:'DELETE',headers:{'X-Dashboard-Token':TOKEN}});
+  const data=await response.json(); if(!response.ok)throw new Error(data.error||'No se pudo quitar la imagen');
+  ticketPanelImageDelete=false; ticketPanelImageUrl='';
+}
+function removeTicketPanelImage(){
+  ticketPanelImageFile=null; ticketPanelImageUrl=''; ticketPanelImageDelete=true;
+  const input=document.getElementById('tk-panel-image-file'); if(input) input.value='';
+  const thumb=document.getElementById('tk-panel-image-thumb'); thumb.className='upload-empty'; thumb.textContent='🖼️';
+  document.getElementById('tk-panel-image-status').textContent='La imagen se quitará al guardar'; updateTicketPreview();
 }
 function deleteTicketPanel(){
   const id=getVal('tk-panel-select'); if(!id){toast('Selecciona un panel guardado','error');return;}
@@ -899,7 +936,7 @@ function updateTicketPreview(){
   const title=getVal('tk-panel-title').trim()||'Ayuda y soporte';
   document.getElementById('tk-preview-title').textContent=title;
   document.getElementById('tk-preview-description').textContent=getVal('tk-panel-description')||'Selecciona una opción para crear un ticket.';
-  const image=document.getElementById('tk-preview-image'), url=getVal('tk-panel-image').trim();
+  const image=document.getElementById('tk-preview-image'), url=ticketPanelImageUrl;
   image.src=url; image.style.display=/^https?:\/\//i.test(url)?'block':'none';
   document.getElementById('tk-preview-buttons').innerHTML=readTicketPanelButtons().map(b=>`<button class="ticket-preview-button style-${b.style}" type="button">${esc(b.emoji)} &nbsp; ${esc(b.label)}</button>`).join('');
 }
