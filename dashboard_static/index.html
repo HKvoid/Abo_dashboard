@@ -106,7 +106,7 @@ tr:last-child td{border-bottom:none}
 .upload-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.upload-status{font-size:12px;color:var(--muted)}
 .ticket-preview{background:#2b2d31;border:1px solid #3f4147;border-radius:10px;padding:18px;margin:12px 0}
 .ticket-preview-title{font-size:15px;font-weight:700;margin-bottom:6px}.ticket-preview-desc{white-space:pre-wrap;color:#dbdee1;margin-bottom:14px}
-.ticket-preview-buttons{display:flex;gap:8px;flex-wrap:wrap}.ticket-preview-button{background:#4e5058;color:#f2f3f5;border:0;border-radius:5px;padding:8px 12px;font:600 12px Inter,sans-serif}
+.ticket-preview-buttons{display:flex;gap:8px;flex-wrap:wrap}.ticket-preview-button{background:#4e5058;color:#f2f3f5;border:0;border-radius:5px;padding:8px 12px;font:600 12px Inter,sans-serif}.ticket-preview-button.style-success{background:#248046}.ticket-preview-button.style-danger{background:#da373c}.ticket-preview-button.style-primary{background:#5865f2}
 .ticket-button-row{display:grid;grid-template-columns:100px 1fr 36px;gap:8px;align-items:center;margin-bottom:8px}.ticket-button-row input{min-width:0}
 .ticket-stats{grid-template-columns:repeat(4,1fr)}.ticket-row{cursor:pointer}.ticket-row:hover td{background:rgba(88,101,242,.08)}
 .modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.68);display:none;align-items:center;justify-content:center;padding:20px;z-index:50}.modal-backdrop.open{display:flex}
@@ -261,8 +261,9 @@ tr:last-child td{border-bottom:none}
         <div class="form-group"><label>Nombre interno del panel</label><input type="text" id="tk-panel-name" maxlength="80" placeholder="Soporte general"></div>
         <div class="form-group"><label>Título del panel</label><input type="text" id="tk-panel-title" maxlength="100" value="Ayuda y soporte" oninput="updateTicketPreview()"></div>
         <div class="form-group"><label>Descripción</label><textarea id="tk-panel-description" maxlength="1000" placeholder="Cuéntanos cómo podemos ayudarte…" oninput="updateTicketPreview()">Selecciona una opción para crear un ticket. Nuestro equipo te atenderá pronto.</textarea></div>
+        <div class="form-group"><label>Imagen del embed (URL pública opcional)</label><input type="url" id="tk-panel-image" maxlength="1000" placeholder="https://ejemplo.com/banner.png" oninput="updateTicketPreview()"><div class="hint">Usa una URL pública http:// o https://.</div></div>
         <div class="form-group"><label>Botones de apertura</label><div id="tk-panel-buttons"></div><button class="btn btn-ghost btn-sm" type="button" onclick="addTicketPanelButton()">＋ Agregar opción</button></div>
-        <label>Vista previa del panel</label><div class="ticket-preview"><div class="ticket-preview-title" id="tk-preview-title">Ayuda y soporte</div><div class="ticket-preview-desc" id="tk-preview-description"></div><div class="ticket-preview-buttons" id="tk-preview-buttons"></div></div>
+        <label>Vista previa del panel</label><div class="ticket-preview"><div class="ticket-preview-title" id="tk-preview-title">Ayuda y soporte</div><div class="ticket-preview-desc" id="tk-preview-description"></div><img id="tk-preview-image" alt="Imagen del panel" style="display:none;max-width:100%;max-height:180px;border-radius:6px;margin:10px 0"><div class="ticket-preview-buttons" id="tk-preview-buttons"></div></div>
         <div class="hint">Puedes guardar varios diseños. Después publícalos desde Discord con <code>/ticket_panel</code> y selecciona el nombre del panel.</div>
         <div class="actions-bar"><button class="btn btn-primary" onclick="saveTicketPanel()">Guardar panel</button></div>
       </div>
@@ -614,11 +615,11 @@ function loadTicketPanels(selectId=''){
 function selectTicketPanel(){
   const panel=ticketPanels.find(p=>String(p.id)===String(getVal('tk-panel-select')));
   if(!panel) return newTicketPanel(false);
-  setVal('tk-panel-name',panel.name); setVal('tk-panel-title',panel.title); setVal('tk-panel-description',panel.description);
+  setVal('tk-panel-name',panel.name); setVal('tk-panel-title',panel.title); setVal('tk-panel-description',panel.description); setVal('tk-panel-image',panel.image_url||'');
   renderTicketPanelButtons(panel.buttons||[]); updateTicketPreview();
 }
 function newTicketPanel(show=true){
-  document.getElementById('tk-panel-select').value=''; setVal('tk-panel-name',''); setVal('tk-panel-title','Ayuda y soporte');
+  document.getElementById('tk-panel-select').value=''; setVal('tk-panel-name',''); setVal('tk-panel-title','Ayuda y soporte'); setVal('tk-panel-image','');
   setVal('tk-panel-description','Selecciona una opción para crear un ticket. Nuestro equipo te atenderá pronto.');
   renderTicketPanelButtons([{emoji:'🎫',label:'Crear ticket'}]); updateTicketPreview();
   if(show) toast('Nuevo panel listo');
@@ -626,7 +627,7 @@ function newTicketPanel(show=true){
 function saveTicketPanel(){
   const name=getVal('tk-panel-name').trim();
   if(!name){toast('Escribe un nombre para el panel','error');return;}
-  const data={name,title:getVal('tk-panel-title').trim()||'Ayuda y soporte',description:getVal('tk-panel-description').trim(),buttons:readTicketPanelButtons()};
+  const data={name,title:getVal('tk-panel-title').trim()||'Ayuda y soporte',description:getVal('tk-panel-description').trim(),image_url:getVal('tk-panel-image').trim(),buttons:readTicketPanelButtons()};
   const id=getVal('tk-panel-select'); const method=id?'PUT':'POST'; const path=id?`/api/ticket-panels/${GUILD}/${id}`:`/api/ticket-panels/${GUILD}`;
   apiFetch(path,{method,body:JSON.stringify(data)}).then(result=>loadTicketPanels(result.id||id).then(()=>toast('Panel guardado ✅'))).catch(e=>toast(e.message||'No se pudo guardar el panel','error'));
 }
@@ -884,21 +885,23 @@ async function removeGreetingImage(kind){
 // ── Creador del panel de tickets ──────────────────────────────────────────────
 function renderTicketPanelButtons(buttons){
   const list=document.getElementById('tk-panel-buttons');
-  list.innerHTML=(buttons||[]).slice(0,10).map((b,i)=>`<div class="ticket-button-row"><input class="tpanel-emoji" type="text" maxlength="8" aria-label="Emoji del botón ${i+1}" value="${esc(b.emoji||'🎫')}" oninput="updateTicketPreview()"><input class="tpanel-label" type="text" maxlength="40" aria-label="Texto del botón ${i+1}" value="${esc(b.label||'Soporte')}" placeholder="Nombre de la opción" oninput="updateTicketPreview()"><button class="btn btn-ghost btn-sm" type="button" aria-label="Quitar botón" onclick="this.parentElement.remove();updateTicketPreview()">×</button></div>`).join('');
+  list.innerHTML=(buttons||[]).slice(0,10).map((b,i)=>`<div class="ticket-button-row"><input class="tpanel-emoji" type="text" maxlength="8" aria-label="Emoji del botón ${i+1}" value="${esc(b.emoji||'🎫')}" oninput="updateTicketPreview()"><input class="tpanel-label" type="text" maxlength="40" aria-label="Texto del botón ${i+1}" value="${esc(b.label||'Soporte')}" placeholder="Nombre de la opción" oninput="updateTicketPreview()"><select class="tpanel-style" aria-label="Color del botón ${i+1}" onchange="updateTicketPreview()"><option value="secondary" ${b.style==='secondary'||!b.style?'selected':''}>Negro / oscuro</option><option value="success" ${b.style==='success'?'selected':''}>Verde vivo</option><option value="danger" ${b.style==='danger'?'selected':''}>Rojo vivo</option><option value="primary" ${b.style==='primary'?'selected':''}>Azul</option></select><button class="btn btn-ghost btn-sm" type="button" aria-label="Quitar botón" onclick="this.parentElement.remove();updateTicketPreview()">×</button></div>`).join('');
   updateTicketPreview();
 }
 function readTicketPanelButtons(){
-  return [...document.querySelectorAll('#tk-panel-buttons .ticket-button-row')].map(row=>({emoji:row.querySelector('.tpanel-emoji').value.trim()||'🎫',label:row.querySelector('.tpanel-label').value.trim()})).filter(b=>b.label).slice(0,10);
+  return [...document.querySelectorAll('#tk-panel-buttons .ticket-button-row')].map(row=>({emoji:row.querySelector('.tpanel-emoji').value.trim()||'🎫',label:row.querySelector('.tpanel-label').value.trim(),style:row.querySelector('.tpanel-style').value})).filter(b=>b.label).slice(0,10);
 }
 function addTicketPanelButton(){
   const buttons=readTicketPanelButtons(); if(buttons.length>=10){toast('Puedes agregar hasta 10 opciones','error');return;}
-  buttons.push({emoji:'🎫',label:'Nueva opción'});renderTicketPanelButtons(buttons);
+  buttons.push({emoji:'🎫',label:'Nueva opción',style:'secondary'});renderTicketPanelButtons(buttons);
 }
 function updateTicketPreview(){
   const title=getVal('tk-panel-title').trim()||'Ayuda y soporte';
   document.getElementById('tk-preview-title').textContent=title;
   document.getElementById('tk-preview-description').textContent=getVal('tk-panel-description')||'Selecciona una opción para crear un ticket.';
-  document.getElementById('tk-preview-buttons').innerHTML=readTicketPanelButtons().map(b=>`<button class="ticket-preview-button" type="button">${esc(b.emoji)} &nbsp; ${esc(b.label)}</button>`).join('');
+  const image=document.getElementById('tk-preview-image'), url=getVal('tk-panel-image').trim();
+  image.src=url; image.style.display=/^https?:\/\//i.test(url)?'block':'none';
+  document.getElementById('tk-preview-buttons').innerHTML=readTicketPanelButtons().map(b=>`<button class="ticket-preview-button style-${b.style}" type="button">${esc(b.emoji)} &nbsp; ${esc(b.label)}</button>`).join('');
 }
 
 // ── Preview ───────────────────────────────────────────────────────────────────
