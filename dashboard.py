@@ -573,6 +573,129 @@ def delete_ticket_panel_image(guild_id, panel_id):
     run_async(_delete())
     return jsonify({"ok": True})
 
+# ── Abo Cards ─────────────────────────────────────────────────────────────────
+_CARD_RARITIES = {"Común", "Rara", "Épica", "Legendaria"}
+_CARD_SLUG_RE = __import__("re").compile(r"^[a-z0-9][a-z0-9_-]{1,39}$")
+
+
+def _card_image_from_request(required=False):
+    image = request.files.get("image")
+    if not image or not image.filename:
+        if required:
+            raise ValueError("Selecciona una imagen para la carta")
+        return None
+    mime = (image.mimetype or "").lower()
+    validator = _IMAGE_TYPES.get(mime)
+    if not validator:
+        raise ValueError("Formato no compatible. Usa PNG, JPG, GIF o WebP")
+    raw = image.stream.read(MAX_IMAGE_BYTES + 1)
+    if not raw or len(raw) > MAX_IMAGE_BYTES or not validator(raw):
+        raise ValueError("La imagen no es válida o supera el límite de 5 MB")
+    try:
+        with Image.open(io.BytesIO(raw)) as decoded:
+            expected = {"image/png":"PNG", "image/jpeg":"JPEG", "image/gif":"GIF", "image/webp":"WEBP"}[mime]
+            if decoded.format != expected or decoded.width * decoded.height > 40_000_000:
+                raise ValueError("La imagen no es válida o tiene dimensiones demasiado grandes")
+            decoded.verify()
+    except (UnidentifiedImageError, OSError, Image.DecompressionBombError, Image.DecompressionBombWarning) as error:
+        raise ValueError("No se pudo validar la imagen") from error
+    ext = {"image/png":"png", "image/jpeg":"jpg", "image/gif":"gif", "image/webp":"webp"}[mime]
+    return mime, raw, ext
+
+
+def _card_json(row):
+    data = dict(row)
+    data["has_image"] = bool(data.pop("image_data", None))
+    data["created_at"] = data["created_at"].isoformat() if data.get("created_at") else None
+    return data
+
+
+@app.get("/api/cards/<int:guild_id>")
+@require_auth
+def get_cards(guild_id):
+    rows = run_async(_fetch("""SELECT slug,name,rarity,image_file,drop_weight,base_value,active,emoji_name,emoji_id,image_data,created_at
+                              FROM card_catalog ORDER BY created_at ASC, name ASC"""))
+    return jsonify({"cards": [_card_json(row) for row in rows]})
+
+
+@app.post("/api/cards/<int:guild_id>")
+@require_auth
+def create_card(guild_id):
+    form = request.form
+    slug = form.get("slug", "").strip().lower()
+    name = form.get("name", "").strip()
+    rarity = form.get("rarity", "Común").strip()
+    emoji_name = form.get("emoji_name", "").strip()
+    emoji_id = form.get("emoji_id", "").strip()
+    try:
+        weight = int(form.get("drop_weight", "25"))
+        value = int(form.get("base_value", "100"))
+    except ValueError:
+        return jsonify({"error": "Peso y valor deben ser números enteros"}), 400
+    if not _CARD_SLUG_RE.fullmatch(slug): return jsonify({"error": "El slug debe usar minúsculas, números, guion o guion bajo (2–40 caracteres)"}), 400
+    if not name or len(name) > 80: return jsonify({"error": "El nombre es obligatorio y debe tener máximo 80 caracteres"}), 400
+    if rarity not in _CARD_RARITIES or not 1 <= weight <= 10000 or not 1 <= value <= 10_000_000:
+        return jsonify({"error": "Rareza, peso o valor no válidos"}), 400
+    if emoji_id and not emoji_id.isdigit(): return jsonify({"error": "El ID del emoji debe ser numérico"}), 400
+    try:
+        uploaded = _card_image_from_request(required=True)
+    except ValueError as error:
+        return jsonify({"error": str(error)}), 400
+    mime, raw, ext = uploaded
+    image_file = f"{slug}.{ext}"
+    try:
+        run_async(_execute("""INSERT INTO card_catalog (slug,name,rarity,image_file,drop_weight,base_value,active,emoji_name,emoji_id,image_mime,image_data)
+                             VALUES ($1,$2,$3,$4,$5,$6,TRUE,$7,$8,$9,$10)""",
+                             slug,name,rarity,image_file,weight,value,emoji_name,emoji_id,mime,raw))
+    except asyncpg.UniqueViolationError:
+        return jsonify({"error": "Ya existe una carta con ese slug"}), 409
+    return jsonify({"ok": True, "slug": slug}), 201
+
+
+@app.put("/api/cards/<int:guild_id>/<slug>")
+@require_auth
+def update_card(guild_id, slug):
+    if not _CARD_SLUG_RE.fullmatch(slug): return jsonify({"error": "Slug inválido"}), 400
+    form = request.form
+    name = form.get("name", "").strip()
+    rarity = form.get("rarity", "Común").strip()
+    emoji_name = form.get("emoji_name", "").strip()
+    emoji_id = form.get("emoji_id", "").strip()
+    try:
+        weight = int(form.get("drop_weight", "25")); value = int(form.get("base_value", "100"))
+    except ValueError:
+        return jsonify({"error": "Peso y valor deben ser números enteros"}), 400
+    if not name or len(name) > 80 or rarity not in _CARD_RARITIES or not 1 <= weight <= 10000 or not 1 <= value <= 10_000_000:
+        return jsonify({"error": "Datos de carta no válidos"}), 400
+    if emoji_id and not emoji_id.isdigit(): return jsonify({"error": "El ID del emoji debe ser numérico"}), 400
+    try:
+        uploaded = _card_image_from_request(required=False)
+    except ValueError as error:
+        return jsonify({"error": str(error)}), 400
+    if uploaded:
+        mime, raw, ext = uploaded
+        image_file = f"{slug}.{ext}"
+        query = """UPDATE card_catalog SET name=$1,rarity=$2,drop_weight=$3,base_value=$4,emoji_name=$5,emoji_id=$6,image_file=$7,image_mime=$8,image_data=$9,active=TRUE WHERE slug=$10"""
+        args = (name,rarity,weight,value,emoji_name,emoji_id,image_file,mime,raw,slug)
+    elif form.get("remove_image") == "1":
+        query = """UPDATE card_catalog SET name=$1,rarity=$2,drop_weight=$3,base_value=$4,emoji_name=$5,emoji_id=$6,image_file=$7,image_mime='',image_data=NULL,active=TRUE WHERE slug=$8"""
+        args = (name,rarity,weight,value,emoji_name,emoji_id,f"{slug}.png",slug)
+    else:
+        query = """UPDATE card_catalog SET name=$1,rarity=$2,drop_weight=$3,base_value=$4,emoji_name=$5,emoji_id=$6,active=TRUE WHERE slug=$7"""
+        args = (name,rarity,weight,value,emoji_name,emoji_id,slug)
+    updated = run_async(_execute(query, *args))
+    if int(str(updated).split()[-1]) == 0:
+        return jsonify({"error": "Carta no encontrada"}), 404
+    return jsonify({"ok": True, "slug": slug})
+
+
+@app.delete("/api/cards/<int:guild_id>/<slug>")
+@require_auth
+def delete_card(guild_id, slug):
+    result = run_async(_execute("UPDATE card_catalog SET active=FALSE WHERE slug=$1", slug))
+    if int(str(result).split()[-1]) == 0: return jsonify({"error": "Carta no encontrada"}), 404
+    return jsonify({"ok": True})
+
 # ── Stats ─────────────────────────────────────────────────────────────────────
 @app.get("/api/stats/<int:guild_id>")
 @require_auth

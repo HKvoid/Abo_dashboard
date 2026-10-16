@@ -98,8 +98,16 @@ CREATE TABLE IF NOT EXISTS card_catalog (
     drop_weight INTEGER NOT NULL DEFAULT 100,
     base_value INTEGER NOT NULL DEFAULT 100,
     active BOOLEAN NOT NULL DEFAULT TRUE,
+    emoji_name TEXT NOT NULL DEFAULT '',
+    emoji_id TEXT NOT NULL DEFAULT '',
+    image_mime TEXT NOT NULL DEFAULT '',
+    image_data BYTEA,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+ALTER TABLE card_catalog ADD COLUMN IF NOT EXISTS emoji_name TEXT NOT NULL DEFAULT '';
+ALTER TABLE card_catalog ADD COLUMN IF NOT EXISTS emoji_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE card_catalog ADD COLUMN IF NOT EXISTS image_mime TEXT NOT NULL DEFAULT '';
+ALTER TABLE card_catalog ADD COLUMN IF NOT EXISTS image_data BYTEA;
 
 CREATE TABLE IF NOT EXISTS card_wallets (
     guild_id BIGINT NOT NULL,
