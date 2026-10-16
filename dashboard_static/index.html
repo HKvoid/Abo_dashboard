@@ -154,6 +154,7 @@ tr:last-child td{border-bottom:none}
     <div class="nav-label">Módulos</div>
     <button class="nav-item" onclick="show('greetings',this)"><span>👋</span> Bienvenidas</button>
     <button class="nav-item" onclick="show('tickets',this)"><span>🎫</span> Tickets</button>
+    <button class="nav-item" onclick="show('cards',this)"><span>🎴</span> Cartas</button>
     <button class="nav-item" onclick="show('colors',this)"><span>🎨</span> Colores</button>
     <button class="nav-item" onclick="show('moderation',this)"><span>🛡️</span> Moderación</button>
     <button class="nav-item" onclick="show('warns',this)"><span>⚠️</span> Warns</button>
@@ -291,6 +292,33 @@ tr:last-child td{border-bottom:none}
         </div>
         <div id="tk-table"><div class="empty"><div class="spinner"></div></div></div>
       </div>
+    </div>
+
+    <!-- ═══ CARTAS ═══ -->
+    <div class="panel" id="panel-cards">
+      <div class="section-heading">Abo Cards</div>
+      <div class="section-sub">Administra el catálogo, los emojis personalizados y las cartas que pueden salir en los sobres.</div>
+      <div class="card">
+        <div class="card-title">🎴 <span id="card-form-title">Nueva carta</span></div>
+        <div class="form-row">
+          <div class="form-group"><label>Slug único</label><input id="card-slug" type="text" placeholder="mi-carta"><div class="hint">Minúsculas, números, guion o guion bajo.</div></div>
+          <div class="form-group"><label>Nombre visible</label><input id="card-name" type="text" placeholder="Mi Carta"></div>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label>Rareza</label><select id="card-rarity"><option>Común</option><option>Rara</option><option>Épica</option><option>Legendaria</option></select></div>
+          <div class="form-group"><label>Imagen de la carta</label><input id="card-image" type="file" accept="image/png,image/jpeg,image/gif,image/webp"><div class="hint">Obligatoria al crear · máximo 5 MB.</div></div>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label>Peso de aparición</label><input id="card-weight" type="number" min="1" max="10000" value="25"><div class="hint">Mayor peso = más posibilidades en sobres.</div></div>
+          <div class="form-group"><label>Valor base en Abo Coins</label><input id="card-value" type="number" min="1" max="10000000" value="100"></div>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label>Nombre del emoji</label><input id="card-emoji-name" type="text" placeholder="NOMBRE_EMOJI"><div class="hint">Ejemplo: <code>MIELABO</code></div></div>
+          <div class="form-group"><label>ID del emoji</label><input id="card-emoji-id" type="text" placeholder="1560744239107940422"><div class="hint">Se mostrará como emoji personalizado en Discord.</div></div>
+        </div>
+        <div class="actions-bar"><button class="btn btn-ghost" type="button" onclick="resetCardForm()">Limpiar</button><button class="btn btn-primary" type="button" onclick="saveCard()">Guardar carta</button></div>
+      </div>
+      <div class="card"><div class="card-title">📚 Catálogo guardado <span class="badge" id="card-count">0</span></div><div id="cards-table"><div class="empty"><div class="spinner"></div></div></div></div>
     </div>
 
     <!-- ═══ COLORES ═══ -->
@@ -447,7 +475,7 @@ tr:last-child td{border-bottom:none}
 <script>
 // ── State ────────────────────────────────────────────────────────────────────
 let API = '', TOKEN = '', GUILD = '';
-const TITLES = {overview:'Resumen',greetings:'Bienvenidas',tickets:'Tickets',colors:'Colores',moderation:'Moderación',warns:'Warns',ia:'IA',permisos:'Permisos'};
+const TITLES = {overview:'Resumen',greetings:'Bienvenidas',tickets:'Tickets',cards:'Cartas',colors:'Colores',moderation:'Moderación',warns:'Warns',ia:'IA',permisos:'Permisos'};
 let warnOffset = 0, warnTotal = 0;
 const WARN_LIMIT = 20;
 let ticketRows = [];
@@ -489,6 +517,7 @@ function show(panel, btn){
   document.getElementById('topbar-title').textContent = TITLES[panel]||panel;
   if(panel==='overview')   loadOverview();
   if(panel==='tickets')    loadTickets();
+  if(panel==='cards')      loadCards();
   if(panel==='colors')     loadColors();
   if(panel==='moderation') loadExceptions();
   if(panel==='warns')      loadWarns();
@@ -499,6 +528,29 @@ function initDashboard(){
   loadOverview();
   loadSettings();
 }
+
+// ── Abo Cards ─────────────────────────────────────────────────────────────────
+let editingCard = '';
+function cardApiFetch(path, opts={}){
+  const headers = {'X-Dashboard-Token':TOKEN, ...(opts.headers||{})};
+  return fetch(API+path, {...opts, headers}).then(async res=>{ if(!res.ok) throw new Error(await res.text()); return res.json(); });
+}
+function loadCards(){
+  cardApiFetch('/api/cards/'+GUILD).then(d=>{
+    const rows=d.cards||[]; document.getElementById('card-count').textContent=rows.filter(c=>c.active).length;
+    const el=document.getElementById('cards-table');
+    if(!rows.length){el.innerHTML='<div class="empty">Todavía no hay cartas.</div>';return;}
+    el.innerHTML=`<table><thead><tr><th>Carta</th><th>Rareza</th><th>Emoji</th><th>Peso</th><th>Valor</th><th>Estado</th><th></th></tr></thead><tbody>${rows.map(c=>`<tr><td><strong>${esc(c.name)}</strong><br><code>${esc(c.slug)}</code></td><td>${esc(c.rarity)}</td><td>${c.emoji_id?'<code>&lt;:'+esc(c.emoji_name)+':'+esc(c.emoji_id)+'&gt;</code>':'—'}</td><td>${c.drop_weight}</td><td>${c.base_value}</td><td><span class="tag ${c.active?'tag-open':'tag-closed'}">${c.active?'Activa':'Archivada'}</span></td><td><button class="btn btn-ghost btn-sm" onclick="editCard('${esc(c.slug)}')">Editar</button> ${c.active?`<button class="btn btn-danger btn-sm" onclick="deleteCard('${esc(c.slug)}')">Archivar</button>`:''}</td></tr>`).join('')}</tbody></table>`;
+  }).catch(e=>toast('No se pudo cargar el catálogo','error'));
+}
+function resetCardForm(){ editingCard=''; document.getElementById('card-form-title').textContent='Nueva carta'; ['card-slug','card-name','card-emoji-name','card-emoji-id'].forEach(id=>document.getElementById(id).value=''); document.getElementById('card-rarity').value='Común'; document.getElementById('card-weight').value=25; document.getElementById('card-value').value=100; document.getElementById('card-image').value=''; document.getElementById('card-slug').disabled=false; }
+function editCard(slug){
+  cardApiFetch('/api/cards/'+GUILD).then(d=>{const c=(d.cards||[]).find(x=>x.slug===slug);if(!c)return;editingCard=slug;document.getElementById('card-form-title').textContent='Editar '+c.name;document.getElementById('card-slug').value=c.slug;document.getElementById('card-slug').disabled=true;document.getElementById('card-name').value=c.name;document.getElementById('card-rarity').value=c.rarity;document.getElementById('card-weight').value=c.drop_weight;document.getElementById('card-value').value=c.base_value;document.getElementById('card-emoji-name').value=c.emoji_name||'';document.getElementById('card-emoji-id').value=c.emoji_id||'';document.getElementById('card-image').value='';window.scrollTo({top:0,behavior:'smooth'});}).catch(()=>toast('No se pudo cargar la carta','error'));
+}
+function saveCard(){
+  const fd=new FormData(); fd.append('slug',document.getElementById('card-slug').value.trim()); fd.append('name',document.getElementById('card-name').value.trim()); fd.append('rarity',document.getElementById('card-rarity').value); fd.append('drop_weight',document.getElementById('card-weight').value); fd.append('base_value',document.getElementById('card-value').value); fd.append('emoji_name',document.getElementById('card-emoji-name').value.trim()); fd.append('emoji_id',document.getElementById('card-emoji-id').value.trim()); const file=document.getElementById('card-image').files[0]; if(file)fd.append('image',file); const path=editingCard?`/api/cards/${GUILD}/${encodeURIComponent(editingCard)}`:`/api/cards/${GUILD}`; cardApiFetch(path,{method:editingCard?'PUT':'POST',body:fd}).then(()=>{toast('Carta guardada','success');resetCardForm();loadCards();}).catch(async e=>{let msg='No se pudo guardar la carta';try{const j=JSON.parse(e.message);msg=j.error||msg;}catch(_){}toast(msg,'error');});
+}
+function deleteCard(slug){ if(!confirm('¿Archivar esta carta? No aparecerá en nuevos sobres, pero se conservarán los inventarios existentes.'))return; cardApiFetch(`/api/cards/${GUILD}/${encodeURIComponent(slug)}`,{method:'DELETE'}).then(()=>{toast('Carta archivada','success');loadCards();}).catch(()=>toast('No se pudo archivar la carta','error')); }
 
 // ── Stats ─────────────────────────────────────────────────────────────────────
 function loadOverview(){
