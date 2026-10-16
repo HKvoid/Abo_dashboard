@@ -90,6 +90,64 @@ CREATE TABLE IF NOT EXISTS ticket_panels (
 ALTER TABLE ticket_panels ADD COLUMN IF NOT EXISTS image_url TEXT NOT NULL DEFAULT '';
 CREATE INDEX IF NOT EXISTS idx_ticket_panels_guild ON ticket_panels (guild_id, updated_at DESC);
 
+CREATE TABLE IF NOT EXISTS card_catalog (
+    slug TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    rarity TEXT NOT NULL,
+    image_file TEXT NOT NULL,
+    drop_weight INTEGER NOT NULL DEFAULT 100,
+    base_value INTEGER NOT NULL DEFAULT 100,
+    active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS card_wallets (
+    guild_id BIGINT NOT NULL,
+    user_id BIGINT NOT NULL,
+    coins BIGINT NOT NULL DEFAULT 500 CHECK (coins >= 0),
+    daily_claimed_at TIMESTAMPTZ,
+    daily_streak INTEGER NOT NULL DEFAULT 0,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (guild_id, user_id)
+);
+
+CREATE TABLE IF NOT EXISTS card_inventory (
+    guild_id BIGINT NOT NULL,
+    user_id BIGINT NOT NULL,
+    card_slug TEXT NOT NULL REFERENCES card_catalog(slug),
+    quantity INTEGER NOT NULL DEFAULT 0 CHECK (quantity >= 0),
+    first_obtained_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (guild_id, user_id, card_slug)
+);
+CREATE INDEX IF NOT EXISTS idx_card_inventory_user ON card_inventory (guild_id, user_id, quantity DESC);
+
+CREATE TABLE IF NOT EXISTS card_market_listings (
+    id BIGSERIAL PRIMARY KEY,
+    guild_id BIGINT NOT NULL,
+    seller_id BIGINT NOT NULL,
+    card_slug TEXT NOT NULL REFERENCES card_catalog(slug),
+    quantity INTEGER NOT NULL CHECK (quantity > 0),
+    remaining INTEGER NOT NULL CHECK (remaining >= 0),
+    price_each BIGINT NOT NULL CHECK (price_each > 0),
+    status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','sold','cancelled')),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_card_market_active ON card_market_listings (guild_id, status, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS card_trades (
+    id BIGSERIAL PRIMARY KEY,
+    guild_id BIGINT NOT NULL,
+    sender_id BIGINT NOT NULL,
+    receiver_id BIGINT NOT NULL,
+    offered_slug TEXT NOT NULL REFERENCES card_catalog(slug),
+    offered_quantity INTEGER NOT NULL CHECK (offered_quantity > 0),
+    requested_slug TEXT NOT NULL REFERENCES card_catalog(slug),
+    requested_quantity INTEGER NOT NULL CHECK (requested_quantity > 0),
+    status TEXT NOT NULL DEFAULT 'completed' CHECK (status IN ('completed','cancelled')),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 CREATE TABLE IF NOT EXISTS schema_migrations (
     migration_key TEXT PRIMARY KEY,
     applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
