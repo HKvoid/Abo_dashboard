@@ -630,6 +630,36 @@ def _character_fields(form):
     if len(stats) > 30:
         raise ValueError("Puedes añadir como máximo 30 stats")
     clean_stats = {str(k).strip()[:80]: str(v).strip()[:300] for k,v in stats.items() if str(k).strip()}
+    # Campos de combate dedicados. Se guardan dentro del JSON para conservar
+    # compatibilidad con las stats personalizadas y facilitar futuras ampliaciones.
+    combat_fields = {
+        "HP": form.get("combat_hp", ""),
+        "ATK": form.get("combat_atk", ""),
+        "Speed": form.get("combat_speed", ""),
+        "Clase": form.get("combat_class", ""),
+        "Habilidad": form.get("ability_name", ""),
+        "Descripción de habilidad": form.get("ability_description", ""),
+        "Daño de habilidad": form.get("ability_damage", ""),
+        "Pasiva": form.get("passive_name", ""),
+        "Descripción de pasiva": form.get("passive_description", ""),
+        "Daño de pasiva": form.get("passive_damage", ""),
+    }
+    for field_key, field_label in (("HP", "HP"), ("ATK", "ATK"), ("Speed", "Speed")):
+        raw_value = str(combat_fields[field_key]).strip()
+        if raw_value:
+            try:
+                numeric_value = int(raw_value)
+            except ValueError as error:
+                raise ValueError(f"{field_label} debe ser un número entero") from error
+            if numeric_value < 0:
+                raise ValueError(f"{field_label} no puede ser negativo")
+            combat_fields[field_key] = str(numeric_value)
+    for key, value in combat_fields.items():
+        value = str(value).strip()[:500]
+        if value:
+            clean_stats[key] = value
+        else:
+            clean_stats.pop(key, None)
     tags = [x.strip()[:40] for x in str(form.get("tags", "")).split(",") if x.strip()][:20]
     try:
         embed_color = int(str(form.get("embed_color", "5793266")).strip() or "5793266")
@@ -691,8 +721,8 @@ def update_card(guild_id, slug):
     try:
         description, stats, tags, embed_color = _character_fields(form)
         weight = int(form.get("drop_weight", "25")); value = int(form.get("base_value", "100"))
-    except ValueError:
-        return jsonify({"error": "Peso y valor deben ser números enteros"}), 400
+    except ValueError as error:
+        return jsonify({"error": str(error)}), 400
     if not name or len(name) > 80 or rarity not in _CARD_RARITIES or not 1 <= weight <= 10000 or not 1 <= value <= 10_000_000:
         return jsonify({"error": "Datos de carta no válidos"}), 400
     if emoji_id and not emoji_id.isdigit(): return jsonify({"error": "El ID del emoji debe ser numérico"}), 400
