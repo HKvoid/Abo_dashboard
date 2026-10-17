@@ -156,6 +156,19 @@ CREATE TABLE IF NOT EXISTS card_trades (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+CREATE TABLE IF NOT EXISTS card_trade_sessions (
+    id BIGSERIAL PRIMARY KEY,
+    guild_id BIGINT NOT NULL,
+    user_a BIGINT NOT NULL,
+    user_b BIGINT NOT NULL,
+    offer_a JSONB NOT NULL DEFAULT '{}'::jsonb,
+    offer_b JSONB NOT NULL DEFAULT '{}'::jsonb,
+    status TEXT NOT NULL DEFAULT 'completed' CHECK (status IN ('completed','cancelled')),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    completed_at TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS idx_card_trade_sessions_guild ON card_trade_sessions (guild_id, created_at DESC);
+
 CREATE TABLE IF NOT EXISTS schema_migrations (
     migration_key TEXT PRIMARY KEY,
     applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
