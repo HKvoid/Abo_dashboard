@@ -613,9 +613,31 @@ def _card_json(row):
 @app.get("/api/cards/<int:guild_id>")
 @require_auth
 def get_cards(guild_id):
-    rows = run_async(_fetch("""SELECT slug,name,rarity,image_file,drop_weight,base_value,active,emoji_name,emoji_id,image_data,set_slug,created_at
+    rows = run_async(_fetch("""SELECT slug,name,rarity,image_file,drop_weight,base_value,active,emoji_name,emoji_id,image_data,set_slug,description,stats,tags,embed_color,created_at
                               FROM card_catalog ORDER BY created_at ASC, name ASC"""))
     return jsonify({"cards": [_card_json(row) for row in rows]})
+
+
+def _character_fields(form):
+    description = str(form.get("description", "")).strip()[:4000]
+    raw_stats = str(form.get("stats", "{}")).strip() or "{}"
+    try:
+        stats = json.loads(raw_stats)
+    except json.JSONDecodeError as error:
+        raise ValueError("Stats debe ser un JSON válido") from error
+    if not isinstance(stats, dict):
+        raise ValueError("Stats debe ser un objeto JSON de pares nombre/valor")
+    if len(stats) > 30:
+        raise ValueError("Puedes añadir como máximo 30 stats")
+    clean_stats = {str(k).strip()[:80]: str(v).strip()[:300] for k,v in stats.items() if str(k).strip()}
+    tags = [x.strip()[:40] for x in str(form.get("tags", "")).split(",") if x.strip()][:20]
+    try:
+        embed_color = int(str(form.get("embed_color", "5793266")).strip() or "5793266")
+    except ValueError as error:
+        raise ValueError("El color del embed debe ser un número decimal") from error
+    if not 0 <= embed_color <= 16777215:
+        raise ValueError("El color del embed debe estar entre 0 y 16777215")
+    return description, json.dumps(clean_stats, ensure_ascii=False), tags, embed_color
 
 
 @app.post("/api/cards/<int:guild_id>")
@@ -629,10 +651,11 @@ def create_card(guild_id):
     emoji_id = form.get("emoji_id", "").strip()
     set_slug = form.get("set_slug", "original").strip().lower() or "original"
     try:
+        description, stats, tags, embed_color = _character_fields(form)
         weight = int(form.get("drop_weight", "25"))
         value = int(form.get("base_value", "100"))
-    except ValueError:
-        return jsonify({"error": "Peso y valor deben ser números enteros"}), 400
+    except ValueError as error:
+        return jsonify({"error": str(error)}), 400
     if not _CARD_SLUG_RE.fullmatch(slug): return jsonify({"error": "El slug debe usar minúsculas, números, guion o guion bajo (2–40 caracteres)"}), 400
     if not name or len(name) > 80: return jsonify({"error": "El nombre es obligatorio y debe tener máximo 80 caracteres"}), 400
     if rarity not in _CARD_RARITIES or not 1 <= weight <= 10000 or not 1 <= value <= 10_000_000:
@@ -646,9 +669,9 @@ def create_card(guild_id):
     mime, raw, ext = uploaded
     image_file = f"{slug}.{ext}"
     try:
-        run_async(_execute("""INSERT INTO card_catalog (slug,name,rarity,image_file,drop_weight,base_value,active,emoji_name,emoji_id,image_mime,image_data,set_slug)
-                             VALUES ($1,$2,$3,$4,$5,$6,TRUE,$7,$8,$9,$10,$11)""",
-                             slug,name,rarity,image_file,weight,value,emoji_name,emoji_id,mime,raw,set_slug))
+        run_async(_execute("""INSERT INTO card_catalog (slug,name,rarity,image_file,drop_weight,base_value,active,emoji_name,emoji_id,image_mime,image_data,set_slug,description,stats,tags,embed_color)
+                             VALUES ($1,$2,$3,$4,$5,$6,TRUE,$7,$8,$9,$10,$11,$12,$13,$14,$15)""",
+                             slug,name,rarity,image_file,weight,value,emoji_name,emoji_id,mime,raw,set_slug,description,stats,tags,embed_color))
     except asyncpg.UniqueViolationError:
         return jsonify({"error": "Ya existe una carta con ese slug"}), 409
     return jsonify({"ok": True, "slug": slug}), 201
@@ -666,6 +689,7 @@ def update_card(guild_id, slug):
     set_slug = form.get("set_slug", "original").strip().lower() or "original"
     run_async(_execute("INSERT INTO card_sets (slug,name) VALUES ($1,$2) ON CONFLICT (slug) DO NOTHING", set_slug, set_slug.replace("_", " ").title()))
     try:
+        description, stats, tags, embed_color = _character_fields(form)
         weight = int(form.get("drop_weight", "25")); value = int(form.get("base_value", "100"))
     except ValueError:
         return jsonify({"error": "Peso y valor deben ser números enteros"}), 400
@@ -679,14 +703,14 @@ def update_card(guild_id, slug):
     if uploaded:
         mime, raw, ext = uploaded
         image_file = f"{slug}.{ext}"
-        query = """UPDATE card_catalog SET name=$1,rarity=$2,drop_weight=$3,base_value=$4,emoji_name=$5,emoji_id=$6,image_file=$7,image_mime=$8,image_data=$9,set_slug=$10,active=TRUE WHERE slug=$11"""
-        args = (name,rarity,weight,value,emoji_name,emoji_id,image_file,mime,raw,set_slug,slug)
+        query = """UPDATE card_catalog SET name=$1,rarity=$2,drop_weight=$3,base_value=$4,emoji_name=$5,emoji_id=$6,image_file=$7,image_mime=$8,image_data=$9,set_slug=$10,description=$11,stats=$12::jsonb,tags=$13,embed_color=$14,active=TRUE WHERE slug=$15"""
+        args = (name,rarity,weight,value,emoji_name,emoji_id,image_file,mime,raw,set_slug,description,stats,tags,embed_color,slug)
     elif form.get("remove_image") == "1":
-        query = """UPDATE card_catalog SET name=$1,rarity=$2,drop_weight=$3,base_value=$4,emoji_name=$5,emoji_id=$6,image_file=$7,image_mime='',image_data=NULL,set_slug=$8,active=TRUE WHERE slug=$9"""
-        args = (name,rarity,weight,value,emoji_name,emoji_id,f"{slug}.png",set_slug,slug)
+        query = """UPDATE card_catalog SET name=$1,rarity=$2,drop_weight=$3,base_value=$4,emoji_name=$5,emoji_id=$6,image_file=$7,image_mime='',image_data=NULL,set_slug=$8,description=$9,stats=$10::jsonb,tags=$11,embed_color=$12,active=TRUE WHERE slug=$13"""
+        args = (name,rarity,weight,value,emoji_name,emoji_id,f"{slug}.png",set_slug,description,stats,tags,embed_color,slug)
     else:
-        query = """UPDATE card_catalog SET name=$1,rarity=$2,drop_weight=$3,base_value=$4,emoji_name=$5,emoji_id=$6,set_slug=$7,active=TRUE WHERE slug=$8"""
-        args = (name,rarity,weight,value,emoji_name,emoji_id,set_slug,slug)
+        query = """UPDATE card_catalog SET name=$1,rarity=$2,drop_weight=$3,base_value=$4,emoji_name=$5,emoji_id=$6,set_slug=$7,description=$8,stats=$9::jsonb,tags=$10,embed_color=$11,active=TRUE WHERE slug=$12"""
+        args = (name,rarity,weight,value,emoji_name,emoji_id,set_slug,description,stats,tags,embed_color,slug)
     updated = run_async(_execute(query, *args))
     if int(str(updated).split()[-1]) == 0:
         return jsonify({"error": "Carta no encontrada"}), 404
