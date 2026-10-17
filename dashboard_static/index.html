@@ -321,6 +321,7 @@ tr:last-child td{border-bottom:none}
         <div class="actions-bar"><button class="btn btn-ghost" type="button" onclick="resetCardForm()">Limpiar</button><button class="btn btn-primary" type="button" onclick="saveCard()">Guardar carta</button></div>
       </div>
       <div class="card"><div class="card-title">📚 Catálogo guardado <span class="badge" id="card-count">0</span></div><div id="cards-table"><div class="empty"><div class="spinner"></div></div></div></div>
+      <div class="card"><div class="card-title">💬 Mensajes de Abo Cards</div><div class="hint" style="margin-bottom:14px">Personaliza títulos y textos. Variables disponibles: <code>{cards}</code>, <code>{balance}</code>, <code>{level}</code>, <code>{xp}</code>, <code>{set_name}</code>, <code>{reward}</code>.</div><div id="card-messages-editor"><div class="empty"><div class="spinner"></div></div></div><div class="actions-bar"><button class="btn btn-primary" type="button" onclick="saveCardMessages()">Guardar mensajes</button></div></div>
     </div>
 
     <!-- ═══ COLORES ═══ -->
@@ -538,6 +539,7 @@ function cardApiFetch(path, opts={}){
   return fetch(API+path, {...opts, headers}).then(async res=>{ if(!res.ok) throw new Error(await res.text()); return res.json(); });
 }
 function loadCards(){
+  loadCardMessages();
   cardApiFetch('/api/cards/'+GUILD).then(d=>{
     const rows=d.cards||[]; document.getElementById('card-count').textContent=rows.filter(c=>c.active).length;
     const el=document.getElementById('cards-table');
@@ -546,6 +548,11 @@ function loadCards(){
   }).catch(e=>toast('No se pudo cargar el catálogo','error'));
 }
 function resetCardForm(){ editingCard=''; document.getElementById('card-form-title').textContent='Nueva carta'; ['card-slug','card-name','card-emoji-name','card-emoji-id'].forEach(id=>document.getElementById(id).value=''); document.getElementById('card-rarity').value='Común'; document.getElementById('card-weight').value=25; document.getElementById('card-value').value=100; document.getElementById('card-set').value='original'; document.getElementById('card-image').value=''; document.getElementById('card-slug').disabled=false; }
+const CARD_MESSAGE_LABELS={pack_opened:'Sobre abierto',level_up:'Subida de nivel',pity_rare:'Pity raro',pity_epic:'Pity épico',set_complete:'Set completado'};
+const CARD_MESSAGE_DEFAULTS={pack_opened:['¡Sobre abierto! 🎴','{cards}\n\nSaldo restante: **{balance} Abo Coins**'],level_up:['¡Subiste de nivel! ✨','Ahora eres nivel **{level}** y tienes **{xp} XP**.'],pity_rare:['Protección de suerte 🔵','Tu próximo sobre garantiza al menos una carta **Rara**.'],pity_epic:['Protección de suerte 🟣','Tu próximo sobre garantiza al menos una carta **Épica**.'],set_complete:['¡Set completado! 🏆','Completaste **{set_name}** y recibiste **{reward} Abo Coins**.']};
+function loadCardMessages(){cardApiFetch('/api/card-messages/'+GUILD).then(d=>{const map=Object.fromEntries((d.messages||[]).map(x=>[x.message_key,x]));document.getElementById('card-messages-editor').innerHTML=Object.keys(CARD_MESSAGE_LABELS).map(k=>{const x=map[k]||{title:CARD_MESSAGE_DEFAULTS[k][0],description:CARD_MESSAGE_DEFAULTS[k][1],color:5793266};return `<div class="form-row" style="border-top:1px solid var(--border);padding-top:14px;margin-top:14px"><div class="form-group"><label>${CARD_MESSAGE_LABELS[k]} · título</label><input id="msg-title-${k}" value="${esc(x.title)}"></div><div class="form-group"><label>Color decimal</label><input id="msg-color-${k}" type="number" min="0" max="16777215" value="${Number(x.color||5793266)}"></div><div class="form-group" style="grid-column:1/-1"><label>Descripción</label><textarea id="msg-desc-${k}">${esc(x.description)}</textarea></div></div>`}).join('')}).catch(()=>toast('No se pudieron cargar los mensajes','error'))}
+function saveCardMessages(){Promise.all(Object.keys(CARD_MESSAGE_LABELS).map(k=>cardApiFetch('/api/card-messages/'+GUILD+'/'+k,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({title:document.getElementById('msg-title-'+k).value,description:document.getElementById('msg-desc-'+k).value,color:Number(document.getElementById('msg-color-'+k).value)})}))).then(()=>toast('Mensajes guardados','success')).catch(()=>toast('No se pudieron guardar los mensajes','error'))}
+
 function editCard(slug){
   cardApiFetch('/api/cards/'+GUILD).then(d=>{const c=(d.cards||[]).find(x=>x.slug===slug);if(!c)return;editingCard=slug;document.getElementById('card-form-title').textContent='Editar '+c.name;document.getElementById('card-slug').value=c.slug;document.getElementById('card-slug').disabled=true;document.getElementById('card-name').value=c.name;document.getElementById('card-rarity').value=c.rarity;document.getElementById('card-weight').value=c.drop_weight;document.getElementById('card-value').value=c.base_value;document.getElementById('card-set').value=c.set_slug||'original';document.getElementById('card-emoji-name').value=c.emoji_name||'';document.getElementById('card-emoji-id').value=c.emoji_id||'';document.getElementById('card-image').value='';window.scrollTo({top:0,behavior:'smooth'});}).catch(()=>toast('No se pudo cargar la carta','error'));
 }
