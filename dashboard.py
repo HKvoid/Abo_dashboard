@@ -613,7 +613,7 @@ def _card_json(row):
 @app.get("/api/cards/<int:guild_id>")
 @require_auth
 def get_cards(guild_id):
-    rows = run_async(_fetch("""SELECT slug,name,rarity,image_file,drop_weight,base_value,active,emoji_name,emoji_id,image_data,created_at
+    rows = run_async(_fetch("""SELECT slug,name,rarity,image_file,drop_weight,base_value,active,emoji_name,emoji_id,image_data,set_slug,created_at
                               FROM card_catalog ORDER BY created_at ASC, name ASC"""))
     return jsonify({"cards": [_card_json(row) for row in rows]})
 
@@ -627,6 +627,7 @@ def create_card(guild_id):
     rarity = form.get("rarity", "Común").strip()
     emoji_name = form.get("emoji_name", "").strip()
     emoji_id = form.get("emoji_id", "").strip()
+    set_slug = form.get("set_slug", "original").strip().lower() or "original"
     try:
         weight = int(form.get("drop_weight", "25"))
         value = int(form.get("base_value", "100"))
@@ -637,6 +638,7 @@ def create_card(guild_id):
     if rarity not in _CARD_RARITIES or not 1 <= weight <= 10000 or not 1 <= value <= 10_000_000:
         return jsonify({"error": "Rareza, peso o valor no válidos"}), 400
     if emoji_id and not emoji_id.isdigit(): return jsonify({"error": "El ID del emoji debe ser numérico"}), 400
+    run_async(_execute("INSERT INTO card_sets (slug,name) VALUES ($1,$2) ON CONFLICT (slug) DO NOTHING", set_slug, set_slug.replace("_", " ").title()))
     try:
         uploaded = _card_image_from_request(required=True)
     except ValueError as error:
@@ -644,9 +646,9 @@ def create_card(guild_id):
     mime, raw, ext = uploaded
     image_file = f"{slug}.{ext}"
     try:
-        run_async(_execute("""INSERT INTO card_catalog (slug,name,rarity,image_file,drop_weight,base_value,active,emoji_name,emoji_id,image_mime,image_data)
-                             VALUES ($1,$2,$3,$4,$5,$6,TRUE,$7,$8,$9,$10)""",
-                             slug,name,rarity,image_file,weight,value,emoji_name,emoji_id,mime,raw))
+        run_async(_execute("""INSERT INTO card_catalog (slug,name,rarity,image_file,drop_weight,base_value,active,emoji_name,emoji_id,image_mime,image_data,set_slug)
+                             VALUES ($1,$2,$3,$4,$5,$6,TRUE,$7,$8,$9,$10,$11)""",
+                             slug,name,rarity,image_file,weight,value,emoji_name,emoji_id,mime,raw,set_slug))
     except asyncpg.UniqueViolationError:
         return jsonify({"error": "Ya existe una carta con ese slug"}), 409
     return jsonify({"ok": True, "slug": slug}), 201
@@ -661,6 +663,8 @@ def update_card(guild_id, slug):
     rarity = form.get("rarity", "Común").strip()
     emoji_name = form.get("emoji_name", "").strip()
     emoji_id = form.get("emoji_id", "").strip()
+    set_slug = form.get("set_slug", "original").strip().lower() or "original"
+    run_async(_execute("INSERT INTO card_sets (slug,name) VALUES ($1,$2) ON CONFLICT (slug) DO NOTHING", set_slug, set_slug.replace("_", " ").title()))
     try:
         weight = int(form.get("drop_weight", "25")); value = int(form.get("base_value", "100"))
     except ValueError:
@@ -675,14 +679,14 @@ def update_card(guild_id, slug):
     if uploaded:
         mime, raw, ext = uploaded
         image_file = f"{slug}.{ext}"
-        query = """UPDATE card_catalog SET name=$1,rarity=$2,drop_weight=$3,base_value=$4,emoji_name=$5,emoji_id=$6,image_file=$7,image_mime=$8,image_data=$9,active=TRUE WHERE slug=$10"""
-        args = (name,rarity,weight,value,emoji_name,emoji_id,image_file,mime,raw,slug)
+        query = """UPDATE card_catalog SET name=$1,rarity=$2,drop_weight=$3,base_value=$4,emoji_name=$5,emoji_id=$6,image_file=$7,image_mime=$8,image_data=$9,set_slug=$10,active=TRUE WHERE slug=$11"""
+        args = (name,rarity,weight,value,emoji_name,emoji_id,image_file,mime,raw,set_slug,slug)
     elif form.get("remove_image") == "1":
-        query = """UPDATE card_catalog SET name=$1,rarity=$2,drop_weight=$3,base_value=$4,emoji_name=$5,emoji_id=$6,image_file=$7,image_mime='',image_data=NULL,active=TRUE WHERE slug=$8"""
-        args = (name,rarity,weight,value,emoji_name,emoji_id,f"{slug}.png",slug)
+        query = """UPDATE card_catalog SET name=$1,rarity=$2,drop_weight=$3,base_value=$4,emoji_name=$5,emoji_id=$6,image_file=$7,image_mime='',image_data=NULL,set_slug=$8,active=TRUE WHERE slug=$9"""
+        args = (name,rarity,weight,value,emoji_name,emoji_id,f"{slug}.png",set_slug,slug)
     else:
-        query = """UPDATE card_catalog SET name=$1,rarity=$2,drop_weight=$3,base_value=$4,emoji_name=$5,emoji_id=$6,active=TRUE WHERE slug=$7"""
-        args = (name,rarity,weight,value,emoji_name,emoji_id,slug)
+        query = """UPDATE card_catalog SET name=$1,rarity=$2,drop_weight=$3,base_value=$4,emoji_name=$5,emoji_id=$6,set_slug=$7,active=TRUE WHERE slug=$8"""
+        args = (name,rarity,weight,value,emoji_name,emoji_id,set_slug,slug)
     updated = run_async(_execute(query, *args))
     if int(str(updated).split()[-1]) == 0:
         return jsonify({"error": "Carta no encontrada"}), 404

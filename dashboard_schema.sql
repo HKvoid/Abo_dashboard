@@ -102,12 +102,26 @@ CREATE TABLE IF NOT EXISTS card_catalog (
     emoji_id TEXT NOT NULL DEFAULT '',
     image_mime TEXT NOT NULL DEFAULT '',
     image_data BYTEA,
+    set_slug TEXT NOT NULL DEFAULT 'original',
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+ALTER TABLE card_catalog ADD COLUMN IF NOT EXISTS set_slug TEXT NOT NULL DEFAULT 'original';
 ALTER TABLE card_catalog ADD COLUMN IF NOT EXISTS emoji_name TEXT NOT NULL DEFAULT '';
 ALTER TABLE card_catalog ADD COLUMN IF NOT EXISTS emoji_id TEXT NOT NULL DEFAULT '';
 ALTER TABLE card_catalog ADD COLUMN IF NOT EXISTS image_mime TEXT NOT NULL DEFAULT '';
 ALTER TABLE card_catalog ADD COLUMN IF NOT EXISTS image_data BYTEA;
+
+CREATE TABLE IF NOT EXISTS card_sets (
+    slug TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    reward_coins INTEGER NOT NULL DEFAULT 0,
+    active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+INSERT INTO card_sets (slug,name,description,reward_coins)
+VALUES ('original','Colección Original','Las primeras cartas de Abo Cards.',250)
+ON CONFLICT (slug) DO NOTHING;
 
 CREATE TABLE IF NOT EXISTS card_wallets (
     guild_id BIGINT NOT NULL,
