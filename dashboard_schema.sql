@@ -129,9 +129,52 @@ CREATE TABLE IF NOT EXISTS card_wallets (
     coins BIGINT NOT NULL DEFAULT 500 CHECK (coins >= 0),
     daily_claimed_at TIMESTAMPTZ,
     daily_streak INTEGER NOT NULL DEFAULT 0,
+    xp BIGINT NOT NULL DEFAULT 0,
+    level INTEGER NOT NULL DEFAULT 1,
+    pity_rare INTEGER NOT NULL DEFAULT 0,
+    pity_epic INTEGER NOT NULL DEFAULT 0,
+    packs_opened INTEGER NOT NULL DEFAULT 0,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     PRIMARY KEY (guild_id, user_id)
+);
+
+ALTER TABLE card_wallets ADD COLUMN IF NOT EXISTS xp BIGINT NOT NULL DEFAULT 0;
+ALTER TABLE card_wallets ADD COLUMN IF NOT EXISTS level INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE card_wallets ADD COLUMN IF NOT EXISTS pity_rare INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE card_wallets ADD COLUMN IF NOT EXISTS pity_epic INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE card_wallets ADD COLUMN IF NOT EXISTS packs_opened INTEGER NOT NULL DEFAULT 0;
+
+CREATE TABLE IF NOT EXISTS card_set_claims (
+    guild_id BIGINT NOT NULL,
+    user_id BIGINT NOT NULL,
+    set_slug TEXT NOT NULL,
+    claimed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (guild_id,user_id,set_slug)
+);
+
+CREATE TABLE IF NOT EXISTS card_message_templates (
+    guild_id BIGINT NOT NULL,
+    message_key TEXT NOT NULL,
+    title TEXT NOT NULL,
+    description TEXT NOT NULL,
+    color INTEGER NOT NULL DEFAULT 5793266,
+    updated_by BIGINT,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (guild_id, message_key)
+);
+
+CREATE TABLE IF NOT EXISTS card_admin_audit (
+    id BIGSERIAL PRIMARY KEY,
+    guild_id BIGINT NOT NULL,
+    actor_id BIGINT NOT NULL,
+    action TEXT NOT NULL,
+    target_id BIGINT,
+    card_slug TEXT,
+    quantity INTEGER,
+    coins BIGINT,
+    details JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE TABLE IF NOT EXISTS card_inventory (
@@ -175,12 +218,21 @@ CREATE TABLE IF NOT EXISTS card_trade_sessions (
     guild_id BIGINT NOT NULL,
     user_a BIGINT NOT NULL,
     user_b BIGINT NOT NULL,
+    channel_id BIGINT,
     offer_a JSONB NOT NULL DEFAULT '{}'::jsonb,
     offer_b JSONB NOT NULL DEFAULT '{}'::jsonb,
-    status TEXT NOT NULL DEFAULT 'completed' CHECK (status IN ('completed','cancelled')),
+    status TEXT NOT NULL DEFAULT 'completed' CHECK (status IN ('active','completed','cancelled')),
+    confirmed_a BOOLEAN NOT NULL DEFAULT FALSE,
+    confirmed_b BOOLEAN NOT NULL DEFAULT FALSE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     completed_at TIMESTAMPTZ
 );
+ALTER TABLE card_trade_sessions DROP CONSTRAINT IF EXISTS card_trade_sessions_status_check;
+ALTER TABLE card_trade_sessions ADD CONSTRAINT card_trade_sessions_status_check CHECK (status IN ('active','completed','cancelled'));
+ALTER TABLE card_trade_sessions ADD COLUMN IF NOT EXISTS channel_id BIGINT;
+ALTER TABLE card_trade_sessions ADD COLUMN IF NOT EXISTS confirmed_a BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE card_trade_sessions ADD COLUMN IF NOT EXISTS confirmed_b BOOLEAN NOT NULL DEFAULT FALSE;
+CREATE INDEX IF NOT EXISTS idx_card_trade_sessions_active ON card_trade_sessions (guild_id, channel_id) WHERE status='active';
 CREATE INDEX IF NOT EXISTS idx_card_trade_sessions_guild ON card_trade_sessions (guild_id, created_at DESC);
 
 CREATE TABLE IF NOT EXISTS schema_migrations (

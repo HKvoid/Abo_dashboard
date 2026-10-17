@@ -700,6 +700,29 @@ def delete_card(guild_id, slug):
     if int(str(result).split()[-1]) == 0: return jsonify({"error": "Carta no encontrada"}), 404
     return jsonify({"ok": True})
 
+_CARD_MESSAGE_KEYS = {"pack_opened", "level_up", "pity_rare", "pity_epic", "set_complete"}
+
+@app.get("/api/card-messages/<int:guild_id>")
+@require_auth
+def get_card_messages(guild_id):
+    rows = run_async(_fetch("SELECT message_key,title,description,color,updated_at FROM card_message_templates WHERE guild_id=$1 ORDER BY message_key", guild_id))
+    return jsonify({"messages": [{**dict(row), "updated_at": row["updated_at"].isoformat() if row["updated_at"] else None} for row in rows]})
+
+@app.put("/api/card-messages/<int:guild_id>/<message_key>")
+@require_auth
+def update_card_message(guild_id, message_key):
+    if message_key not in _CARD_MESSAGE_KEYS:
+        return jsonify({"error": "Mensaje no permitido"}), 400
+    data = request.get_json(silent=True) or {}
+    title, description = str(data.get("title", "")).strip(), str(data.get("description", "")).strip()
+    try: color = int(data.get("color", 5793266))
+    except (TypeError, ValueError): return jsonify({"error": "El color no es válido"}), 400
+    if not title or not description or len(title) > 256 or len(description) > 4000 or not 0 <= color <= 16777215:
+        return jsonify({"error": "Título, descripción o color no válidos"}), 400
+    run_async(_execute("""INSERT INTO card_message_templates (guild_id,message_key,title,description,color,updated_by)
+        VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (guild_id,message_key) DO UPDATE SET title=EXCLUDED.title,description=EXCLUDED.description,color=EXCLUDED.color,updated_by=EXCLUDED.updated_by,updated_at=NOW()""", guild_id, message_key, title, description, color, session.get("user_id")))
+    return jsonify({"ok": True})
+
 # ── Stats ─────────────────────────────────────────────────────────────────────
 @app.get("/api/stats/<int:guild_id>")
 @require_auth
