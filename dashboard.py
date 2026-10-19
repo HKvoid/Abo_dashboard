@@ -635,16 +635,27 @@ def _character_fields(form):
     combat_fields = {
         "HP": form.get("combat_hp", ""),
         "ATK": form.get("combat_atk", ""),
+        "DEF": form.get("combat_def", ""),
         "Speed": form.get("combat_speed", ""),
         "Clase": form.get("combat_class", ""),
+        "Rol": form.get("combat_role", ""),
+        "Tipo de daño": form.get("damage_type", ""),
         "Habilidad": form.get("ability_name", ""),
         "Descripción de habilidad": form.get("ability_description", ""),
         "Daño de habilidad": form.get("ability_damage", ""),
+        "Tipo de daño de habilidad": form.get("ability_damage_type", ""),
+        "Estado de habilidad": form.get("ability_effect", ""),
+        "Duración de efecto de habilidad": form.get("ability_effect_duration", ""),
+        "Probabilidad de efecto de habilidad": form.get("ability_effect_chance", ""),
         "Pasiva": form.get("passive_name", ""),
         "Descripción de pasiva": form.get("passive_description", ""),
         "Daño de pasiva": form.get("passive_damage", ""),
+        "Tipo de daño de pasiva": form.get("passive_damage_type", ""),
+        "Estado de pasiva": form.get("passive_effect", ""),
+        "Duración de efecto de pasiva": form.get("passive_effect_duration", ""),
+        "Probabilidad de efecto de pasiva": form.get("passive_effect_chance", ""),
     }
-    for field_key, field_label in (("HP", "HP"), ("ATK", "ATK"), ("Speed", "Speed")):
+    for field_key, field_label in (("HP", "HP"), ("ATK", "ATK"), ("DEF", "DEF"), ("Speed", "Speed")):
         raw_value = str(combat_fields[field_key]).strip()
         if raw_value:
             try:
