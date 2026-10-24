@@ -341,6 +341,43 @@ tr:last-child td{border-bottom:none}
       </div>
       <div class="card"><div class="card-title">📚 Catálogo guardado <span class="badge" id="card-count">0</span></div><div id="cards-table"><div class="empty"><div class="spinner"></div></div></div></div>
       <div class="card"><div class="card-title">💬 Mensajes de Abo Cards</div><div class="hint" style="margin-bottom:14px">Personaliza títulos y textos. Variables disponibles: <code>{cards}</code>, <code>{balance}</code>, <code>{level}</code>, <code>{xp}</code>, <code>{set_name}</code>, <code>{reward}</code>.</div><div id="card-messages-editor"><div class="empty"><div class="spinner"></div></div></div><div class="actions-bar"><button class="btn btn-primary" type="button" onclick="saveCardMessages()">Guardar mensajes</button></div></div>
+
+      <!-- ── EVOLUCIONES ── -->
+      <div class="card">
+        <div class="card-title">🌟 Evoluciones</div>
+        <div class="hint" style="margin-bottom:14px">Configura qué carta se obtiene al evolucionar otra con <code>/evolucionar</code>. Requiere las copias y monedas indicadas.</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;margin-bottom:14px" id="evo-form">
+          <div class="form-group">
+            <label>Carta base (slug)</label>
+            <input id="evo-base" placeholder="ej: abojama" list="evo-slugs-list">
+          </div>
+          <div class="form-group">
+            <label>Evoluciona a (slug)</label>
+            <input id="evo-target" placeholder="ej: abosaurio" list="evo-slugs-list">
+          </div>
+          <div class="form-group">
+            <label>Abo Coins</label>
+            <input id="evo-coins" type="number" min="0" value="500">
+          </div>
+          <div class="form-group">
+            <label>Copias necesarias</label>
+            <input id="evo-copies" type="number" min="1" value="3">
+          </div>
+          <datalist id="evo-slugs-list"></datalist>
+        </div>
+        <div class="actions-bar" style="margin-bottom:18px">
+          <button class="btn btn-primary" type="button" onclick="saveEvolution()">Guardar evolución</button>
+          <button class="btn btn-ghost" type="button" onclick="resetEvoForm()">Limpiar</button>
+        </div>
+        <div id="evo-table"><div class="empty"><div class="spinner"></div></div></div>
+      </div>
+
+      <!-- ── FUSIÓN (info) ── -->
+      <div class="card">
+        <div class="card-title">✨ Reglas de Fusión</div>
+        <div class="hint" style="margin-bottom:14px">Reglas fijas que usa el bot al ejecutar <code>/fusion</code>. No son editables aquí; para cambiarlas modifica <code>FUSION_RULES</code> en <code>cards.py</code>.</div>
+        <div id="fusion-rules-table"><div class="empty"><div class="spinner"></div></div></div>
+      </div>
     </div>
 
     <!-- ═══ COLORES ═══ -->
@@ -539,7 +576,7 @@ function show(panel, btn){
   document.getElementById('topbar-title').textContent = TITLES[panel]||panel;
   if(panel==='overview')   loadOverview();
   if(panel==='tickets')    loadTickets();
-  if(panel==='cards')      loadCards();
+  if(panel==='cards')      { loadCards(); loadEvolutions(); loadFusionRules(); }
   if(panel==='colors')     loadColors();
   if(panel==='moderation') loadExceptions();
   if(panel==='warns')      loadWarns();
@@ -563,6 +600,7 @@ function loadCards(){
   cardApiFetch('/api/cards/'+GUILD).then(d=>{
     const rows=d.cards||[]; document.getElementById('card-count').textContent=rows.filter(c=>c.active).length;
     const el=document.getElementById('cards-table');
+    _populateEvoSlugs(rows);
     if(!rows.length){el.innerHTML='<div class="empty">Todavía no hay cartas.</div>';return;}
     el.innerHTML=`<table><thead><tr><th>Personaje</th><th>Rareza</th><th>Stats</th><th>Peso</th><th>Valor</th><th>Estado</th><th></th></tr></thead><tbody>${rows.map(c=>`<tr><td><strong>${esc(c.name)}</strong><br><code>${esc(c.slug)}</code></td><td>${esc(c.rarity)}</td><td>${Object.keys(c.stats||{}).length} campos</td><td>${c.drop_weight}</td><td>${c.base_value}</td><td><span class="tag ${c.active?'tag-open':'tag-closed'}">${c.active?'Activa':'Archivada'}</span></td><td><button class="btn btn-ghost btn-sm" onclick="editCard('${esc(c.slug)}')">Editar</button> ${c.active?`<button class="btn btn-danger btn-sm" onclick="deleteCard('${esc(c.slug)}')">Archivar</button>`:''}</td></tr>`).join('')}</tbody></table>`;
   }).catch(e=>toast('No se pudo cargar el catálogo','error'));
@@ -572,6 +610,97 @@ const CARD_MESSAGE_LABELS={pack_opened:'Sobre abierto',level_up:'Subida de nivel
 const CARD_MESSAGE_DEFAULTS={pack_opened:['¡Sobre abierto! 🎴','{cards}\n\nSaldo restante: **{balance} Abo Coins**'],level_up:['¡Subiste de nivel! ✨','Ahora eres nivel **{level}** y tienes **{xp} XP**.'],pity_rare:['Protección de suerte 🔵','Tu próximo sobre garantiza al menos una carta **Rara**.'],pity_epic:['Protección de suerte 🟣','Tu próximo sobre garantiza al menos una carta **Épica**.'],set_complete:['¡Set completado! 🏆','Completaste **{set_name}** y recibiste **{reward} Abo Coins**.']};
 function loadCardMessages(){cardApiFetch('/api/card-messages/'+GUILD).then(d=>{const map=Object.fromEntries((d.messages||[]).map(x=>[x.message_key,x]));document.getElementById('card-messages-editor').innerHTML=Object.keys(CARD_MESSAGE_LABELS).map(k=>{const x=map[k]||{title:CARD_MESSAGE_DEFAULTS[k][0],description:CARD_MESSAGE_DEFAULTS[k][1],color:5793266};return `<div class="form-row" style="border-top:1px solid var(--border);padding-top:14px;margin-top:14px"><div class="form-group"><label>${CARD_MESSAGE_LABELS[k]} · título</label><input id="msg-title-${k}" value="${esc(x.title)}"></div><div class="form-group"><label>Color decimal</label><input id="msg-color-${k}" type="number" min="0" max="16777215" value="${Number(x.color||5793266)}"></div><div class="form-group" style="grid-column:1/-1"><label>Descripción</label><textarea id="msg-desc-${k}">${esc(x.description)}</textarea></div></div>`}).join('')}).catch(()=>toast('No se pudieron cargar los mensajes','error'))}
 function saveCardMessages(){Promise.all(Object.keys(CARD_MESSAGE_LABELS).map(k=>cardApiFetch('/api/card-messages/'+GUILD+'/'+k,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({title:document.getElementById('msg-title-'+k).value,description:document.getElementById('msg-desc-'+k).value,color:Number(document.getElementById('msg-color-'+k).value)})}))).then(()=>toast('Mensajes guardados','success')).catch(()=>toast('No se pudieron guardar los mensajes','error'))}
+
+// ── EVOLUCIONES ──────────────────────────────────────────────────────────────
+const RARITY_BADGE = {Común:'#95a5a6',Rara:'#3498db',Épica:'#9b59b6',Legendaria:'#f1c40f'};
+let editingEvo = null;
+
+function loadEvolutions(){
+  const el = document.getElementById('evo-table');
+  el.innerHTML = '<div class="empty"><div class="spinner"></div></div>';
+  cardApiFetch('/api/evolutions/'+GUILD).then(d=>{
+    const rows = d.evolutions || [];
+    if(!rows.length){ el.innerHTML='<div class="empty">No hay evoluciones configuradas.</div>'; return; }
+    el.innerHTML = `<table><thead><tr><th>Carta base</th><th>Rareza</th><th>Evoluciona a</th><th>Rareza</th><th>Copias</th><th>Costo AC</th><th></th></tr></thead><tbody>
+      ${rows.map(r=>`<tr>
+        <td><strong>${esc(r.base_name)}</strong><br><code>${esc(r.base_slug)}</code></td>
+        <td><span class="tag" style="background:${RARITY_BADGE[r.base_rarity]||'#555'}22;color:${RARITY_BADGE[r.base_rarity]||'#aaa'}">${esc(r.base_rarity)}</span></td>
+        <td><strong>${esc(r.evo_name)}</strong><br><code>${esc(r.evolved_slug)}</code></td>
+        <td><span class="tag" style="background:${RARITY_BADGE[r.evo_rarity]||'#555'}22;color:${RARITY_BADGE[r.evo_rarity]||'#aaa'}">${esc(r.evo_rarity)}</span></td>
+        <td>×${r.cost_copies}</td>
+        <td>${Number(r.cost_coins).toLocaleString()} AC</td>
+        <td>
+          <button class="btn btn-ghost btn-sm" onclick="editEvolution('${esc(r.base_slug)}','${esc(r.evolved_slug)}',${r.cost_coins},${r.cost_copies})">Editar</button>
+          <button class="btn btn-danger btn-sm" onclick="deleteEvolution('${esc(r.base_slug)}')">Eliminar</button>
+        </td>
+      </tr>`).join('')}
+    </tbody></table>`;
+  }).catch(()=>{ el.innerHTML='<div class="empty">Error al cargar evoluciones.</div>'; });
+}
+
+function editEvolution(base, evolved, coins, copies){
+  editingEvo = base;
+  document.getElementById('evo-base').value    = base;
+  document.getElementById('evo-target').value  = evolved;
+  document.getElementById('evo-coins').value   = coins;
+  document.getElementById('evo-copies').value  = copies;
+  document.getElementById('evo-base').disabled = true;
+  document.querySelector('#evo-form').scrollIntoView({behavior:'smooth',block:'nearest'});
+}
+
+function resetEvoForm(){
+  editingEvo = null;
+  document.getElementById('evo-base').value    = '';
+  document.getElementById('evo-target').value  = '';
+  document.getElementById('evo-coins').value   = 500;
+  document.getElementById('evo-copies').value  = 3;
+  document.getElementById('evo-base').disabled = false;
+}
+
+function saveEvolution(){
+  const base    = document.getElementById('evo-base').value.trim().toLowerCase();
+  const evolved = document.getElementById('evo-target').value.trim().toLowerCase();
+  const coins   = parseInt(document.getElementById('evo-coins').value) || 0;
+  const copies  = parseInt(document.getElementById('evo-copies').value) || 3;
+  if(!base || !evolved){ toast('Completa la carta base y la evolución','error'); return; }
+  const isEdit = !!editingEvo;
+  const url    = isEdit ? `/api/evolutions/${GUILD}/${encodeURIComponent(editingEvo)}` : `/api/evolutions/${GUILD}`;
+  const method = isEdit ? 'PUT' : 'POST';
+  cardApiFetch(url,{method,headers:{'Content-Type':'application/json'},body:JSON.stringify({base_slug:base,evolved_slug:evolved,cost_coins:coins,cost_copies:copies})})
+    .then(()=>{ toast(isEdit?'Evolución actualizada':'Evolución creada','success'); resetEvoForm(); loadEvolutions(); })
+    .catch(e=>toast(e.message||'Error al guardar','error'));
+}
+
+function deleteEvolution(base){
+  if(!confirm(`¿Eliminar la evolución de "${base}"?`)) return;
+  cardApiFetch(`/api/evolutions/${GUILD}/${encodeURIComponent(base)}`,{method:'DELETE'})
+    .then(()=>{ toast('Evolución eliminada','success'); loadEvolutions(); })
+    .catch(()=>toast('No se pudo eliminar','error'));
+}
+
+// Rellenar datalist con slugs de cartas disponibles
+function _populateEvoSlugs(cards){
+  const dl = document.getElementById('evo-slugs-list');
+  if(!dl) return;
+  dl.innerHTML = cards.filter(c=>c.active).map(c=>`<option value="${esc(c.slug)}">${esc(c.name)} (${esc(c.rarity)})</option>`).join('');
+}
+
+// ── FUSIÓN (info) ────────────────────────────────────────────────────────────
+function loadFusionRules(){
+  const el = document.getElementById('fusion-rules-table');
+  el.innerHTML = '<div class="empty"><div class="spinner"></div></div>';
+  cardApiFetch('/api/fusion-rules').then(d=>{
+    const rules = d.rules || [];
+    el.innerHTML = `<table><thead><tr><th>Rareza de entrada</th><th>Copias</th><th>Costo AC</th><th>Rareza resultado</th></tr></thead><tbody>
+      ${rules.map(r=>`<tr>
+        <td><span class="tag" style="background:${RARITY_BADGE[r.from_rarity]||'#555'}22;color:${RARITY_BADGE[r.from_rarity]||'#aaa'}">${esc(r.from_rarity)}</span></td>
+        <td>×${r.copies}</td>
+        <td>${Number(r.cost).toLocaleString()} AC</td>
+        <td><span class="tag" style="background:${RARITY_BADGE[r.to_rarity]||'#555'}22;color:${RARITY_BADGE[r.to_rarity]||'#aaa'}">${esc(r.to_rarity)}</span></td>
+      </tr>`).join('')}
+    </tbody></table>`;
+  }).catch(()=>{ el.innerHTML='<div class="empty">Error al cargar reglas.</div>'; });
+}
 
 function cardStatsObject(card){
   let stats=card&&card.stats||{};
