@@ -829,6 +829,105 @@ def clear_all_memory():
     return jsonify({"ok": True})
 
 
+# ── Evoluciones ───────────────────────────────────────────────────────────────
+
+@app.get("/api/evolutions/<int:guild_id>")
+@require_auth
+def get_evolutions(guild_id):
+    rows = run_async(_fetch("""
+        SELECT e.base_slug, e.evolved_slug, e.cost_coins, e.cost_copies,
+               b.name AS base_name,  b.rarity AS base_rarity,
+               v.name AS evo_name,   v.rarity AS evo_rarity
+        FROM card_evolutions e
+        JOIN card_catalog b ON b.slug = e.base_slug
+        JOIN card_catalog v ON v.slug = e.evolved_slug
+        ORDER BY b.rarity, b.name
+    """))
+    return jsonify({"evolutions": [dict(r) for r in rows]})
+
+
+@app.post("/api/evolutions/<int:guild_id>")
+@require_auth
+def create_evolution(guild_id):
+    data = request.get_json(silent=True) or {}
+    base_slug    = str(data.get("base_slug", "")).strip().lower()
+    evolved_slug = str(data.get("evolved_slug", "")).strip().lower()
+    try:
+        cost_coins  = int(data.get("cost_coins",  500))
+        cost_copies = int(data.get("cost_copies", 3))
+    except (TypeError, ValueError):
+        return jsonify({"error": "cost_coins y cost_copies deben ser enteros"}), 400
+    if not base_slug or not evolved_slug:
+        return jsonify({"error": "base_slug y evolved_slug son obligatorios"}), 400
+    if base_slug == evolved_slug:
+        return jsonify({"error": "La carta base y la evolucionada no pueden ser la misma"}), 400
+    if cost_coins < 0 or cost_copies < 1:
+        return jsonify({"error": "Valores de costo no válidos"}), 400
+    # Verificar que ambas cartas existen
+    base = run_async(_fetchrow("SELECT slug FROM card_catalog WHERE slug=$1 AND active=TRUE", base_slug))
+    evo  = run_async(_fetchrow("SELECT slug FROM card_catalog WHERE slug=$1 AND active=TRUE", evolved_slug))
+    if not base: return jsonify({"error": f"Carta base '{base_slug}' no encontrada"}), 404
+    if not evo:  return jsonify({"error": f"Carta evolucionada '{evolved_slug}' no encontrada"}), 404
+    run_async(_execute("""
+        INSERT INTO card_evolutions (base_slug, evolved_slug, cost_coins, cost_copies)
+        VALUES ($1, $2, $3, $4)
+        ON CONFLICT (base_slug) DO UPDATE SET
+            evolved_slug = EXCLUDED.evolved_slug,
+            cost_coins   = EXCLUDED.cost_coins,
+            cost_copies  = EXCLUDED.cost_copies
+    """, base_slug, evolved_slug, cost_coins, cost_copies))
+    return jsonify({"ok": True}), 201
+
+
+@app.put("/api/evolutions/<int:guild_id>/<base_slug>")
+@require_auth
+def update_evolution(guild_id, base_slug):
+    data = request.get_json(silent=True) or {}
+    evolved_slug = str(data.get("evolved_slug", "")).strip().lower()
+    try:
+        cost_coins  = int(data.get("cost_coins",  500))
+        cost_copies = int(data.get("cost_copies", 3))
+    except (TypeError, ValueError):
+        return jsonify({"error": "cost_coins y cost_copies deben ser enteros"}), 400
+    if not evolved_slug:
+        return jsonify({"error": "evolved_slug es obligatorio"}), 400
+    if base_slug == evolved_slug:
+        return jsonify({"error": "La carta base y la evolucionada no pueden ser la misma"}), 400
+    if cost_coins < 0 or cost_copies < 1:
+        return jsonify({"error": "Valores de costo no válidos"}), 400
+    evo = run_async(_fetchrow("SELECT slug FROM card_catalog WHERE slug=$1 AND active=TRUE", evolved_slug))
+    if not evo: return jsonify({"error": f"Carta evolucionada '{evolved_slug}' no encontrada"}), 404
+    result = run_async(_execute("""
+        UPDATE card_evolutions SET evolved_slug=$1, cost_coins=$2, cost_copies=$3
+        WHERE base_slug=$4
+    """, evolved_slug, cost_coins, cost_copies, base_slug))
+    if int(str(result).split()[-1]) == 0:
+        return jsonify({"error": "Evolución no encontrada"}), 404
+    return jsonify({"ok": True})
+
+
+@app.delete("/api/evolutions/<int:guild_id>/<base_slug>")
+@require_auth
+def delete_evolution(guild_id, base_slug):
+    result = run_async(_execute("DELETE FROM card_evolutions WHERE base_slug=$1", base_slug))
+    if int(str(result).split()[-1]) == 0:
+        return jsonify({"error": "Evolución no encontrada"}), 404
+    return jsonify({"ok": True})
+
+
+# ── Fusión: reglas (solo lectura, son constantes del bot) ─────────────────────
+
+@app.get("/api/fusion-rules")
+@require_auth
+def get_fusion_rules():
+    """Devuelve las reglas de fusión que usa el bot (Común→Rara→Épica→Legendaria)."""
+    return jsonify({"rules": [
+        {"from_rarity": "Común",      "to_rarity": "Rara",        "copies": 3, "cost": 50},
+        {"from_rarity": "Rara",       "to_rarity": "Épica",       "copies": 3, "cost": 150},
+        {"from_rarity": "Épica",      "to_rarity": "Legendaria",  "copies": 3, "cost": 300},
+    ]})
+
+
 # ── Healthcheck ───────────────────────────────────────────────────────────────
 @app.get("/health")
 def health():

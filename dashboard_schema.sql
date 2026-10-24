@@ -248,3 +248,12 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
     migration_key TEXT PRIMARY KEY,
     applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- Evoluciones de cartas (espejo del bot)
+CREATE TABLE IF NOT EXISTS card_evolutions (
+    base_slug    TEXT PRIMARY KEY REFERENCES card_catalog(slug),
+    evolved_slug TEXT NOT NULL REFERENCES card_catalog(slug),
+    cost_coins   INTEGER NOT NULL DEFAULT 0,
+    cost_copies  INTEGER NOT NULL DEFAULT 3,
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
