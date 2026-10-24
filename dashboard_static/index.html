@@ -344,24 +344,29 @@ tr:last-child td{border-bottom:none}
 
       <!-- ── EVOLUCIONES ── -->
       <div class="card">
-        <div class="card-title">🌟 Evoluciones</div>
-        <div class="hint" style="margin-bottom:14px">Configura qué carta se obtiene al evolucionar otra con <code>/evolucionar</code>. Requiere las copias y monedas indicadas.</div>
+        <div class="card-title">🌟 Evoluciones de stats</div>
+        <div class="hint" style="margin-bottom:14px">Configura qué cartas pueden evolucionar con <code>/evolucionar</code>. Cada nivel consume copias + Abo Coins y sube HP, ATK, DEF y Speed un % fijo.</div>
         <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;margin-bottom:14px" id="evo-form">
           <div class="form-group">
-            <label>Carta base (slug)</label>
+            <label>Carta (slug)</label>
             <input id="evo-base" placeholder="ej: abojama" list="evo-slugs-list">
           </div>
           <div class="form-group">
-            <label>Evoluciona a (slug)</label>
-            <input id="evo-target" placeholder="ej: abosaurio" list="evo-slugs-list">
+            <label>% boost por nivel</label>
+            <input id="evo-boost" type="number" min="1" max="200" value="25">
           </div>
           <div class="form-group">
-            <label>Abo Coins</label>
-            <input id="evo-coins" type="number" min="0" value="500">
+            <label>Niveles máximos</label>
+            <input id="evo-maxlv" type="number" min="1" max="20" value="5">
+          </div>
+          <div class="form-group" style="grid-column:span 1"><!-- spacer --></div>
+          <div class="form-group">
+            <label>Abo Coins por nivel</label>
+            <input id="evo-coins" type="number" min="0" value="100">
           </div>
           <div class="form-group">
-            <label>Copias necesarias</label>
-            <input id="evo-copies" type="number" min="1" value="3">
+            <label>Copias por nivel</label>
+            <input id="evo-copies" type="number" min="1" value="2">
           </div>
           <datalist id="evo-slugs-list"></datalist>
         </div>
@@ -621,16 +626,19 @@ function loadEvolutions(){
   cardApiFetch('/api/evolutions/'+GUILD).then(d=>{
     const rows = d.evolutions || [];
     if(!rows.length){ el.innerHTML='<div class="empty">No hay evoluciones configuradas.</div>'; return; }
-    el.innerHTML = `<table><thead><tr><th>Carta base</th><th>Rareza</th><th>Evoluciona a</th><th>Rareza</th><th>Copias</th><th>Costo AC</th><th></th></tr></thead><tbody>
+    el.innerHTML = `<table><thead><tr>
+      <th>Carta</th><th>Rareza</th><th>% por nivel</th><th>Niveles máx.</th><th>Total máx.</th><th>Copias/nv</th><th>AC/nv</th><th></th>
+    </tr></thead><tbody>
       ${rows.map(r=>`<tr>
         <td><strong>${esc(r.base_name)}</strong><br><code>${esc(r.base_slug)}</code></td>
         <td><span class="tag" style="background:${RARITY_BADGE[r.base_rarity]||'#555'}22;color:${RARITY_BADGE[r.base_rarity]||'#aaa'}">${esc(r.base_rarity)}</span></td>
-        <td><strong>${esc(r.evo_name)}</strong><br><code>${esc(r.evolved_slug)}</code></td>
-        <td><span class="tag" style="background:${RARITY_BADGE[r.evo_rarity]||'#555'}22;color:${RARITY_BADGE[r.evo_rarity]||'#aaa'}">${esc(r.evo_rarity)}</span></td>
+        <td><strong>+${r.stat_boost_pct}%</strong></td>
+        <td>${r.max_level}</td>
+        <td><strong>+${r.stat_boost_pct * r.max_level}%</strong></td>
         <td>×${r.cost_copies}</td>
         <td>${Number(r.cost_coins).toLocaleString()} AC</td>
         <td>
-          <button class="btn btn-ghost btn-sm" onclick="editEvolution('${esc(r.base_slug)}','${esc(r.evolved_slug)}',${r.cost_coins},${r.cost_copies})">Editar</button>
+          <button class="btn btn-ghost btn-sm" onclick="editEvolution('${esc(r.base_slug)}',${r.stat_boost_pct},${r.max_level},${r.cost_coins},${r.cost_copies})">Editar</button>
           <button class="btn btn-danger btn-sm" onclick="deleteEvolution('${esc(r.base_slug)}')">Eliminar</button>
         </td>
       </tr>`).join('')}
@@ -638,10 +646,11 @@ function loadEvolutions(){
   }).catch(()=>{ el.innerHTML='<div class="empty">Error al cargar evoluciones.</div>'; });
 }
 
-function editEvolution(base, evolved, coins, copies){
+function editEvolution(base, boost, maxlv, coins, copies){
   editingEvo = base;
   document.getElementById('evo-base').value    = base;
-  document.getElementById('evo-target').value  = evolved;
+  document.getElementById('evo-boost').value   = boost;
+  document.getElementById('evo-maxlv').value   = maxlv;
   document.getElementById('evo-coins').value   = coins;
   document.getElementById('evo-copies').value  = copies;
   document.getElementById('evo-base').disabled = true;
@@ -651,22 +660,24 @@ function editEvolution(base, evolved, coins, copies){
 function resetEvoForm(){
   editingEvo = null;
   document.getElementById('evo-base').value    = '';
-  document.getElementById('evo-target').value  = '';
-  document.getElementById('evo-coins').value   = 500;
-  document.getElementById('evo-copies').value  = 3;
+  document.getElementById('evo-boost').value   = 25;
+  document.getElementById('evo-maxlv').value   = 5;
+  document.getElementById('evo-coins').value   = 100;
+  document.getElementById('evo-copies').value  = 2;
   document.getElementById('evo-base').disabled = false;
 }
 
 function saveEvolution(){
   const base    = document.getElementById('evo-base').value.trim().toLowerCase();
-  const evolved = document.getElementById('evo-target').value.trim().toLowerCase();
-  const coins   = parseInt(document.getElementById('evo-coins').value) || 0;
-  const copies  = parseInt(document.getElementById('evo-copies').value) || 3;
-  if(!base || !evolved){ toast('Completa la carta base y la evolución','error'); return; }
+  const boost   = parseInt(document.getElementById('evo-boost').value)  || 25;
+  const maxlv   = parseInt(document.getElementById('evo-maxlv').value)  || 5;
+  const coins   = parseInt(document.getElementById('evo-coins').value)  || 100;
+  const copies  = parseInt(document.getElementById('evo-copies').value) || 2;
+  if(!base){ toast('Indica el slug de la carta','error'); return; }
   const isEdit = !!editingEvo;
   const url    = isEdit ? `/api/evolutions/${GUILD}/${encodeURIComponent(editingEvo)}` : `/api/evolutions/${GUILD}`;
   const method = isEdit ? 'PUT' : 'POST';
-  cardApiFetch(url,{method,headers:{'Content-Type':'application/json'},body:JSON.stringify({base_slug:base,evolved_slug:evolved,cost_coins:coins,cost_copies:copies})})
+  cardApiFetch(url,{method,headers:{'Content-Type':'application/json'},body:JSON.stringify({base_slug:base,stat_boost_pct:boost,max_level:maxlv,cost_coins:coins,cost_copies:copies})})
     .then(()=>{ toast(isEdit?'Evolución actualizada':'Evolución creada','success'); resetEvoForm(); loadEvolutions(); })
     .catch(e=>toast(e.message||'Error al guardar','error'));
 }
