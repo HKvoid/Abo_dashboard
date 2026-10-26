@@ -643,6 +643,7 @@ def _character_fields(form):
         "Habilidad": form.get("ability_name", ""),
         "Descripción de habilidad": form.get("ability_description", ""),
         "Daño de habilidad": form.get("ability_damage", ""),
+        "Costo de energía de habilidad": form.get("ability_energy_cost", ""),
         "Tipo de daño de habilidad": form.get("ability_damage_type", ""),
         "Estado de habilidad": form.get("ability_effect", ""),
         "Duración de efecto de habilidad": form.get("ability_effect_duration", ""),
@@ -650,6 +651,7 @@ def _character_fields(form):
         "Habilidad 2": form.get("ability2_name", ""),
         "Descripción de habilidad 2": form.get("ability2_description", ""),
         "Daño de habilidad 2": form.get("ability2_damage", ""),
+        "Costo de energía de habilidad 2": form.get("ability2_energy_cost", ""),
         "Tipo de daño de habilidad 2": form.get("ability2_damage_type", ""),
         "Estado de habilidad 2": form.get("ability2_effect", ""),
         "Duración de efecto de habilidad 2": form.get("ability2_effect_duration", ""),
@@ -657,6 +659,7 @@ def _character_fields(form):
         "Habilidad 3": form.get("ability3_name", ""),
         "Descripción de habilidad 3": form.get("ability3_description", ""),
         "Daño de habilidad 3": form.get("ability3_damage", ""),
+        "Costo de energía de habilidad 3": form.get("ability3_energy_cost", ""),
         "Tipo de daño de habilidad 3": form.get("ability3_damage_type", ""),
         "Estado de habilidad 3": form.get("ability3_effect", ""),
         "Duración de efecto de habilidad 3": form.get("ability3_effect_duration", ""),
@@ -678,6 +681,20 @@ def _character_fields(form):
                 raise ValueError(f"{field_label} debe ser un número entero") from error
             if numeric_value < 0:
                 raise ValueError(f"{field_label} no puede ser negativo")
+            combat_fields[field_key] = str(numeric_value)
+    for field_key, field_label in (
+        ("Costo de energía de habilidad", "El coste de energía de la habilidad 1"),
+        ("Costo de energía de habilidad 2", "El coste de energía de la habilidad 2"),
+        ("Costo de energía de habilidad 3", "El coste de energía de la habilidad 3"),
+    ):
+        raw_value = str(combat_fields[field_key]).strip()
+        if raw_value:
+            try:
+                numeric_value = int(raw_value)
+            except ValueError as error:
+                raise ValueError(f"{field_label} debe ser un número entero entre 1 y 5") from error
+            if not 1 <= numeric_value <= 5:
+                raise ValueError(f"{field_label} debe estar entre 1 y 5")
             combat_fields[field_key] = str(numeric_value)
     for key, value in combat_fields.items():
         value = str(value).strip()[:500]
